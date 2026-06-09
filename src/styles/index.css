@@ -1,0 +1,161 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: #17231c;
+  background: #f5f2ea;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --forest-950: #082f1f;
+  --forest-900: #0b3b27;
+  --forest-800: #125234;
+  --forest-700: #1b6a41;
+  --gold-600: #ad7b22;
+  --gold-100: #f5ecd8;
+  --paper: #fbfaf6;
+  --line: #ddd8ca;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: #f5f2ea;
+  max-width: 100%;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  max-width: 100%;
+  min-height: 100vh;
+  background: #f5f2ea;
+  overflow-x: clip;
+  overscroll-behavior-x: none;
+  touch-action: pan-y;
+}
+
+#root {
+  min-height: 100vh;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+input[type="date"],
+input[type="time"] {
+  min-height: 46px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #aaa495;
+  border-radius: 999px;
+}
+
+@layer components {
+  .page-shell {
+    @apply mx-auto w-full max-w-[1380px] px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-7;
+  }
+
+  .surface-card {
+    @apply border bg-white;
+    border-color: var(--line);
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(33, 45, 36, 0.05);
+  }
+
+  .section-title {
+    @apply text-base font-bold tracking-tight sm:text-lg;
+    color: var(--forest-950);
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-xs font-semibold text-slate-700;
+  }
+
+  .field-control {
+    @apply min-h-11 w-full border bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400;
+    border-color: #d8d4c9;
+    border-radius: 7px;
+  }
+
+  .field-control:focus {
+    border-color: var(--forest-700);
+    box-shadow: 0 0 0 2px rgba(27, 106, 65, 0.12);
+  }
+
+  .primary-button {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 px-5 text-sm font-semibold text-white transition active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50;
+    border-radius: 7px;
+    background: var(--forest-800);
+    box-shadow: none;
+  }
+
+  .primary-button:hover {
+    background: var(--forest-950);
+  }
+
+  .secondary-button {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 border bg-white px-4 text-sm font-semibold transition active:scale-[0.99];
+    border-color: #bcb7aa;
+    border-radius: 7px;
+    color: var(--forest-900);
+  }
+
+  .secondary-button:hover {
+    border-color: var(--forest-700);
+    background: #f7f5ef;
+  }
+}
+
+.display-serif {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.rounded-2xl {
+  border-radius: 9px;
+}
+
+.rounded-3xl {
+  border-radius: 11px;
+}
+
+.shadow-soft,
+.shadow-lg,
+.shadow-2xl {
+  box-shadow: 0 2px 12px rgba(30, 42, 34, 0.07);
+}
+
+.app-rule {
+  height: 1px;
+  background: linear-gradient(90deg, var(--gold-600), transparent);
+}
+
+.mobile-bottom-nav {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  contain: layout paint;
+  will-change: transform;
+  touch-action: manipulation;
+}

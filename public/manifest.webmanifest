@@ -1,0 +1,18 @@
+{
+  "name": "Ciclo 114 - Gestão Zootécnica",
+  "short_name": "Ciclo 114",
+  "description": "Controle gestacional de matrizes e manejo de leitões.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0fdf4",
+  "theme_color": "#047857",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
