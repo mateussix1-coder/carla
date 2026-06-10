@@ -68,7 +68,7 @@ export default function BirthRegisterModal({ item, alunos, addParto, onClose }) 
         <FormSelect
           label="Responsável"
           required
-          options={alunos.map((student) => student.name)}
+          options={['Profª Carla', ...alunos.map((student) => student.name)]}
           value={form.responsible}
           onChange={(event) => setForm({ ...form, responsible: event.target.value })}
         />

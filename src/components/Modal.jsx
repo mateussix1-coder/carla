@@ -21,7 +21,7 @@ export default function Modal({ open, onClose, title, subtitle, children, size =
       <section
         role="dialog"
         aria-modal="true"
-        className={`relative max-h-[92vh] w-full overflow-y-auto rounded-t-xl bg-[#f7f5ef] shadow-2xl sm:rounded-xl ${size}`}
+        className={`relative max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] bg-[#f7f5ef] shadow-2xl sm:rounded-[24px] ${size}`}
       >
         <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-[#d9d4c7] bg-[#0b3b27] px-5 py-4 text-white sm:px-7">
           <div>
@@ -29,7 +29,7 @@ export default function Modal({ open, onClose, title, subtitle, children, size =
             {subtitle && <p className="mt-1 text-xs text-white/70">{subtitle}</p>}
           </div>
           <button
-            className="grid h-9 w-9 shrink-0 place-items-center border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/20 bg-white/10 text-white transition hover:bg-white/20"
             onClick={onClose}
             aria-label="Fechar"
           >

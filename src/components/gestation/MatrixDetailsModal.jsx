@@ -59,20 +59,31 @@ export default function MatrixDetailsModal({
     >
       <div className="space-y-5">
         <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <article className="border border-[#d8d3c7] bg-white p-4 sm:p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+          <article className="overflow-hidden rounded-2xl border border-[#d8d3c7] bg-white">
+            <img
+              src={matrix.image || '/images/aurora.jpg'}
+              alt={`Matriz ${matrix.name}`}
+              width="960"
+              height="720"
+              loading="lazy"
+              decoding="async"
+              className="h-40 w-full object-cover"
+            />
+            <div className="p-4 sm:p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#ad7b22]">Informações da matriz</p>
                 <h3 className="mt-1 text-xl font-bold text-[#082f1f]">{matrix.name}</h3>
                 <p className="text-sm text-slate-500">{matrix.breed} · {matrix.weight} kg</p>
               </div>
               <GestationStatusChip status={stage} />
-            </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
-              <div><span className="text-slate-400">Cobertura</span><strong className="mt-1 block">{formatDate(coverage.date)}</strong></div>
-              <div><span className="text-slate-400">Parto previsto</span><strong className="mt-1 block">{formatDate(expectedDate)}</strong></div>
-              <div><span className="text-slate-400">VARRÃO</span><strong className="mt-1 block">{boarName(coverage.boarId)}</strong></div>
-              <div><span className="text-slate-400">Responsável</span><strong className="mt-1 block">{coverage.responsible}</strong></div>
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+                <div><span className="text-slate-400">Cobertura</span><strong className="mt-1 block">{formatDate(coverage.date)}</strong></div>
+                <div><span className="text-slate-400">Parto previsto</span><strong className="mt-1 block">{formatDate(expectedDate)}</strong></div>
+                <div><span className="text-slate-400">VARRÃO</span><strong className="mt-1 block">{boarName(coverage.boarId)}</strong></div>
+                <div><span className="text-slate-400">Responsável</span><strong className="mt-1 block">{coverage.responsible}</strong></div>
+              </div>
             </div>
           </article>
 

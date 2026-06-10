@@ -2,10 +2,12 @@ import {
   CalendarDays,
   ChevronRight,
   ClipboardList,
+  Edit3,
   PiggyBank,
   Stethoscope,
   UserRound,
 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import ProgressBar from '../ProgressBar.jsx'
 import { formatDate } from '../../utils/dateUtils.js'
 import GestationStatusChip from './GestationStatusChip.jsx'
@@ -34,9 +36,15 @@ export default function GestationCard({ item, boar, onDetails, onRegister }) {
       <div className={`h-1.5 ${critical ? 'bg-red-600' : 'bg-[#0b3b27]'}`} />
       <div className="p-4 sm:p-5">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center border border-[#b8c6ba] bg-[#f3f6f1] text-[#0b3b27]">
-            <PiggyBank size={21} strokeWidth={1.7} />
-          </span>
+          <img
+            src={matrix.image || '/images/aurora.jpg'}
+            alt=""
+            width="56"
+            height="56"
+            loading="lazy"
+            decoding="async"
+            className="h-14 w-14 shrink-0 rounded-2xl object-cover"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#ad7b22]">{matrix.id}</p>
@@ -68,7 +76,7 @@ export default function GestationCard({ item, boar, onDetails, onRegister }) {
           ))}
         </div>
 
-        <div className="grid gap-2 border-t border-[#e2ddd2] pt-4 sm:grid-cols-2">
+        <div className="grid gap-2 border-t border-[#e2ddd2] pt-4 sm:grid-cols-3">
           <button className="primary-button w-full" onClick={onRegister}>
             <Stethoscope size={17} />
             Registrar parto
@@ -78,6 +86,10 @@ export default function GestationCard({ item, boar, onDetails, onRegister }) {
             Ver detalhes
             <ChevronRight size={15} />
           </button>
+          <Link className="secondary-button w-full" to="/coberturas">
+            <Edit3 size={16} />
+            Editar gestação
+          </Link>
         </div>
       </div>
     </article>

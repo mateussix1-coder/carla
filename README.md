@@ -1,79 +1,58 @@
 # Ciclo 114
 
-Aplicativo web responsivo e instalável (PWA) para gestão reprodutiva, controle gestacional de matrizes suínas e manejo de leitões do nascimento ao desmame.
+Aplicativo responsivo para gestão reprodutiva suína, acompanhamento de leitões e
+participação acadêmica.
 
-## Objetivo
+## Arquitetura
 
-A primeira versão foi preparada para apresentação e uso educacional em celular. Ela concentra dados reprodutivos, partos, pesagens, sanidade e responsáveis em uma interface simples, sem depender de backend ou serviços pagos.
-
-## Stack
-
-- React + Vite
+- React 18 + Vite
 - Tailwind CSS
-- React Router DOM
-- Lucide React
-- Recharts
-- `localStorage`
-- PWA com manifest e service worker básico
-- Configuração de deploy para Vercel
+- Vercel Functions
+- Neon Postgres para perfis, sessões, dados operacionais, publicações e auditoria
+- Vercel Blob privado para fotos
+- Autenticação própria com senha protegida por `scrypt`
+- Sessões opacas em cookie `HttpOnly`, `Secure` e `SameSite=Lax`
 
-## Como executar
-
-Requisitos: Node.js 18 ou superior e npm.
+## Desenvolvimento
 
 ```bash
 npm install
+npx vercel env pull .env.local --yes
+npm run db:migrate
 npm run dev
 ```
 
-O Vite informará o endereço local, normalmente `http://localhost:5173`.
+O comando inicia o Vite e as funções de API em conjunto em
+`http://127.0.0.1:5173`.
 
 ## Verificações
 
 ```bash
 npm test
 npm run build
-npm run preview
+npm audit --omit=dev
 ```
 
-## Publicação na Vercel
+## Persistência
 
-O arquivo `vercel.json` já define o framework, o diretório `dist` e o fallback necessário para as rotas do React Router.
+O estado operacional é salvo no Postgres com controle otimista de versão. Perfis,
+sessões, publicações, comentários, curtidas, acessos e eventos de auditoria possuem
+tabelas próprias. Fotos são armazenadas em um Blob privado e servidas somente
+depois da validação da sessão.
 
-```bash
-npm install
-npm run build
-npx vercel login
-npx vercel --prod
-```
+Excluir um aluno arquiva a conta, encerra suas sessões e preserva a autoria dos
+registros anteriores.
 
-Também é possível importar o repositório no painel da Vercel. Use `npm run build` como comando de build e `dist` como diretório de saída.
+## Papéis
 
-## Módulos
+- **Professora:** todos os módulos, gestão de alunos, indicadores individuais e
+  dados operacionais.
+- **Aluno:** painel pessoal, mural acadêmico e perfil.
 
-- Dashboard com indicadores, próximos partos, alertas, gráfico e ações rápidas
-- Matrizes com busca, filtro, cadastro e histórico resumido
-- Varrões
-- Coberturas com previsão automática em 114 dias
-- Acompanhamento da gestação
-- Partos com total automático e criação de lote
-- Manejo de leitões e pesagens PN, P07, P14, P21 e PD
-- Vacinas e medicamentos com alertas
-- Alunos e turmas responsáveis
-- Relatórios reprodutivos, sanitários e de evolução de peso
+No primeiro uso, a professora pode entrar diretamente enquanto o perfil ainda não
+possui senha. Ao definir uma senha em **Meu perfil**, a entrada direta é desativada.
 
-## Persistência e decisões da primeira versão
+## Banco
 
-Os dados ficam no `localStorage` do navegador. A aplicação inicia com dados de demonstração relativos à data atual para que alertas e previsões continuem úteis. O botão "Restaurar dados de demonstração" repõe esses dados.
-
-Fotos são representadas por áreas funcionais de interface, mas o upload binário não foi incluído para evitar exceder o limite do `localStorage`. A camada de dados foi centralizada em contexto React para facilitar uma futura substituição por Supabase, Firebase ou uma API própria.
-
-## Próximas melhorias
-
-- Autenticação por professora, turma e aluno
-- Banco de dados compartilhado e sincronização entre dispositivos
-- Upload e compressão de fotos
-- Exportação de relatórios em PDF/CSV
-- Registro individual por leitão
-- Notificações push para partos e manejos sanitários
-- Rotinas de backup e auditoria
+O esquema está em `database/schema.sql`. A migração idempotente e os dados iniciais
+ficam em `scripts/migrate.mjs`.
