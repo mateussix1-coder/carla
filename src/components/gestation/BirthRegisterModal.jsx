@@ -16,7 +16,7 @@ const emptyForm = {
   responsible: '',
 }
 
-export default function BirthRegisterModal({ item, alunos, addParto, onClose }) {
+export default function BirthRegisterModal({ item, alunos, teacherName, addParto, onClose }) {
   const [form, setForm] = useState(emptyForm)
   const total = totalBorn(form)
 
@@ -68,7 +68,7 @@ export default function BirthRegisterModal({ item, alunos, addParto, onClose }) 
         <FormSelect
           label="Responsável"
           required
-          options={['Profª Carla', ...alunos.map((student) => student.name)]}
+          options={[teacherName, ...alunos.map((student) => student.name)]}
           value={form.responsible}
           onChange={(event) => setForm({ ...form, responsible: event.target.value })}
         />

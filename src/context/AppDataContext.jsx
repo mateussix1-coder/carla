@@ -8,10 +8,42 @@ import {
 } from 'react'
 import { createSeedData } from '../data/seedData.js'
 import { expectedBirthDate } from '../utils/calculations.js'
+import { generateId, isValidHttpUrl, sanitizeInput } from '../utils/dataUtils.js'
 import { toISODate } from '../utils/dateUtils.js'
 import { useAuth } from './AuthContext.jsx'
 
 const AppDataContext = createContext(null)
+
+export const DEFAULT_SETTINGS = {
+  systemName: 'Ciclo 114',
+  farmName: 'Escola / Fazenda Experimental',
+  teacherName: 'Profª Carla',
+  alertDays: 7,
+}
+
+export const DEFAULT_PERMISSIONS = {
+  teacher: {
+    viewAnimals: true,
+    editAnimals: true,
+    recordManagement: true,
+    manageStudents: true,
+    viewReports: true,
+  },
+  monitor: {
+    viewAnimals: true,
+    editAnimals: false,
+    recordManagement: true,
+    manageStudents: false,
+    viewReports: true,
+  },
+  student: {
+    viewAnimals: true,
+    editAnimals: false,
+    recordManagement: true,
+    manageStudents: false,
+    viewReports: false,
+  },
+}
 
 export const CHECKLIST_ITEMS = [
   { key: 'dentes', label: 'Corte dos dentes' },
@@ -36,6 +68,18 @@ const EMPTY_OPERATIONAL_DATA = {
   lotes: [],
   sanitario: [],
   historico: [],
+  attachments: [],
+  settings: DEFAULT_SETTINGS,
+  permissions: DEFAULT_PERMISSIONS,
+}
+
+const DEMO_IDS = {
+  matrizes: new Set(['M001', 'M002', 'M003', 'M004', 'M005']),
+  varroes: new Set(['V001', 'V002', 'V003', 'V004']),
+  coberturas: new Set(['C001', 'C002', 'C003', 'C004', 'C005', 'C006', 'C007']),
+  partos: new Set(['P001', 'P002']),
+  lotes: new Set(['L001', 'L002']),
+  sanitario: new Set(['S001', 'S002', 'S003', 'S004', 'S005']),
 }
 
 function nextId(prefix, records) {
@@ -125,6 +169,18 @@ function normalizeState(source) {
     }),
     sanitario: merged.sanitario || [],
     historico: merged.historico || [],
+    attachments: (merged.attachments || []).filter((item) => item?.entityType && item?.entityId),
+    settings: {
+      ...DEFAULT_SETTINGS,
+      ...(merged.settings || {}),
+      alertDays: Math.min(30, Math.max(1, Number(merged.settings?.alertDays || DEFAULT_SETTINGS.alertDays))),
+    },
+    permissions: Object.fromEntries(
+      Object.entries(DEFAULT_PERMISSIONS).map(([role, defaults]) => [
+        role,
+        { ...defaults, ...(merged.permissions?.[role] || {}) },
+      ]),
+    ),
   }
 }
 
@@ -179,6 +235,7 @@ export function AppDataProvider({ children }) {
     activities: 0,
   })
   const [loading, setLoading] = useState(false)
+  const [dataReady, setDataReady] = useState(false)
   const [syncStatus, setSyncStatus] = useState('idle')
   const [toast, setToast] = useState(null)
   const dataRef = useRef(data)
@@ -236,13 +293,16 @@ export function AppDataProvider({ children }) {
       notify(error.message)
     } finally {
       setLoading(false)
+      setDataReady(true)
     }
   }
 
   useEffect(() => {
     if (user) {
+      setDataReady(false)
       refreshData()
     } else {
+      setDataReady(false)
       setStudents([])
       setStudentAnalytics([])
       setFeedPosts([])
@@ -313,6 +373,11 @@ export function AppDataProvider({ children }) {
       sanitario: current.sanitario.map((item) =>
         item.related === id ? { ...item, related: nextMatrixId } : item,
       ),
+      attachments: current.attachments.map((item) =>
+        item.entityType === 'matriz' && item.entityId === id
+          ? { ...item, entityId: nextMatrixId }
+          : item,
+      ),
     }, user, 'Matriz editada', 'matriz', nextMatrixId, record.name), 'Matriz alterada com sucesso.')
   }
 
@@ -348,6 +413,11 @@ export function AppDataProvider({ children }) {
     updateOperationalState((current) => {
       const matrix = current.matrizes.find((item) => item.id === id)
       const lotIds = current.lotes.filter((item) => item.matrixId === id).map((item) => item.id)
+      const coverageIds = current.coberturas.filter((item) => item.matrixId === id).map((item) => item.id)
+      const birthIds = current.partos.filter((item) => item.matrixId === id).map((item) => item.id)
+      const sanitaryIds = current.sanitario
+        .filter((item) => item.related === id || lotIds.includes(item.related))
+        .map((item) => item.id)
       return withHistory({
         ...current,
         matrizes: current.matrizes.filter((item) => item.id !== id),
@@ -355,6 +425,15 @@ export function AppDataProvider({ children }) {
         partos: current.partos.filter((item) => item.matrixId !== id),
         lotes: current.lotes.filter((item) => item.matrixId !== id),
         sanitario: current.sanitario.filter((item) => item.related !== id && !lotIds.includes(item.related)),
+        attachments: current.attachments.filter((item) => {
+          if (item.entityType === 'matriz' && item.entityId === id) return false
+          if (item.entityType === 'cobertura' && coverageIds.includes(item.entityId)) return false
+          if (item.entityType === 'parto' && birthIds.includes(item.entityId)) return false
+          if (item.entityType === 'lote' && lotIds.includes(item.entityId)) return false
+          if (item.entityType === 'sanitario' && sanitaryIds.includes(item.entityId)) return false
+          if (item.entityType === 'checklist' && lotIds.some((lotId) => item.entityId.startsWith(`${lotId}:`))) return false
+          return true
+        }),
       }, user, 'Matriz excluída definitivamente', 'matriz', id, matrix?.name)
     }, 'Matriz e registros vinculados excluídos.')
   }
@@ -470,6 +549,7 @@ export function AppDataProvider({ children }) {
       const next = {
         ...current,
         coberturas: current.coberturas.filter((item) => item.id !== id),
+        attachments: current.attachments.filter((item) => !(item.entityType === 'cobertura' && item.entityId === id)),
       }
       next.matrizes = current.matrizes.map((matrix) =>
         matrix.id === coverage.matrixId
@@ -563,6 +643,17 @@ export function AppDataProvider({ children }) {
         ...current,
         partos: current.partos.filter((item) => item.id !== id),
         lotes: current.lotes.filter((item) => item.id !== birth.lotId),
+        sanitario: current.sanitario.filter((item) => item.related !== birth.lotId),
+        attachments: current.attachments.filter((item) => {
+          if (item.entityType === 'parto' && item.entityId === id) return false
+          if (item.entityType === 'lote' && item.entityId === birth.lotId) return false
+          if (item.entityType === 'sanitario') {
+            const sanitary = current.sanitario.find((record) => record.id === item.entityId)
+            if (sanitary?.related === birth.lotId) return false
+          }
+          if (item.entityType === 'checklist' && item.entityId.startsWith(`${birth.lotId}:`)) return false
+          return true
+        }),
         coberturas: current.coberturas.map((coverage) =>
           coverage.id === coverageToRestore?.id
             ? { ...coverage, status: 'Prenhez confirmada' }
@@ -584,14 +675,22 @@ export function AppDataProvider({ children }) {
   }
 
   function deleteLote(id) {
-    updateOperationalState((current) => withHistory({
-      ...current,
-      lotes: current.lotes.filter((lot) => lot.id !== id),
-      partos: current.partos.map((birth) =>
-        birth.lotId === id ? { ...birth, lotId: '' } : birth,
-      ),
-      sanitario: current.sanitario.filter((item) => item.related !== id),
-    }, user, 'Ninhada excluída', 'lote', id), 'Ninhada e registros vinculados excluídos.')
+    updateOperationalState((current) => {
+      const sanitaryIds = current.sanitario.filter((item) => item.related === id).map((item) => item.id)
+      return withHistory({
+        ...current,
+        lotes: current.lotes.filter((lot) => lot.id !== id),
+        partos: current.partos.map((birth) =>
+          birth.lotId === id ? { ...birth, lotId: '' } : birth,
+        ),
+        sanitario: current.sanitario.filter((item) => item.related !== id),
+        attachments: current.attachments.filter((item) => (
+          !(item.entityType === 'lote' && item.entityId === id)
+          && !(item.entityType === 'checklist' && item.entityId.startsWith(`${id}:`))
+          && !(item.entityType === 'sanitario' && sanitaryIds.includes(item.entityId))
+        )),
+      }, user, 'Ninhada excluída', 'lote', id)
+    }, 'Ninhada e registros vinculados excluídos.')
   }
 
   function addPesagem(lotId, phase, weight, responsible = '') {
@@ -686,7 +785,121 @@ export function AppDataProvider({ children }) {
     updateOperationalState((current) => withHistory({
       ...current,
       sanitario: current.sanitario.filter((item) => item.id !== id),
+      attachments: current.attachments.filter((item) => !(item.entityType === 'sanitario' && item.entityId === id)),
     }, user, 'Registro sanitário excluído', 'sanitario', id), 'Registro sanitário excluído.')
+  }
+
+  function addAttachment(record) {
+    if (!isValidHttpUrl(record.url)) {
+      notify('Informe uma URL válida iniciada por http:// ou https://.')
+      return false
+    }
+    const attachment = {
+      id: generateId('ANX'),
+      entityType: sanitizeInput(record.entityType, 40),
+      entityId: sanitizeInput(record.entityId, 100),
+      title: sanitizeInput(record.title, 120),
+      type: ['Imagem', 'Vídeo', 'Documento'].includes(record.type) ? record.type : 'Documento',
+      url: String(record.url).trim(),
+      date: record.date || toISODate(),
+      responsible: sanitizeInput(record.responsible, 120),
+      notes: sanitizeInput(record.notes, 1000),
+      createdAt: new Date().toISOString(),
+    }
+    updateOperationalState((current) => withHistory({
+      ...current,
+      attachments: [attachment, ...current.attachments],
+    }, user, 'Anexo adicionado', attachment.entityType, attachment.entityId, attachment.title), 'Anexo salvo no histórico.')
+    return attachment
+  }
+
+  function updateAttachment(id, record) {
+    if (!isValidHttpUrl(record.url)) {
+      notify('Informe uma URL válida iniciada por http:// ou https://.')
+      return false
+    }
+    updateOperationalState((current) => withHistory({
+      ...current,
+      attachments: current.attachments.map((item) => item.id === id ? {
+        ...item,
+        title: sanitizeInput(record.title, 120),
+        type: ['Imagem', 'Vídeo', 'Documento'].includes(record.type) ? record.type : 'Documento',
+        url: String(record.url).trim(),
+        date: record.date || item.date,
+        responsible: sanitizeInput(record.responsible, 120),
+        notes: sanitizeInput(record.notes, 1000),
+      } : item),
+    }, user, 'Anexo editado', record.entityType, record.entityId, record.title), 'Anexo atualizado.')
+    return true
+  }
+
+  function deleteAttachment(id) {
+    updateOperationalState((current) => {
+      const attachment = current.attachments.find((item) => item.id === id)
+      return withHistory({
+        ...current,
+        attachments: current.attachments.filter((item) => item.id !== id),
+      }, user, 'Anexo excluído', attachment?.entityType || 'anexo', attachment?.entityId || id, attachment?.title)
+    }, 'Anexo excluído.')
+  }
+
+  function updateSettings(record) {
+    updateOperationalState((current) => withHistory({
+      ...current,
+      settings: {
+        ...current.settings,
+        systemName: sanitizeInput(record.systemName, 80),
+        farmName: sanitizeInput(record.farmName, 120),
+        teacherName: sanitizeInput(record.teacherName, 120),
+        alertDays: Math.min(30, Math.max(1, Number(record.alertDays || 7))),
+      },
+    }, user, 'Configurações atualizadas', 'sistema', 'settings'), 'Configurações salvas.')
+  }
+
+  function resetSettings() {
+    updateOperationalState((current) => withHistory({
+      ...current,
+      settings: { ...DEFAULT_SETTINGS },
+    }, user, 'Configurações restauradas', 'sistema', 'settings'), 'Configurações padrão restauradas.')
+  }
+
+  function updatePermissions(record) {
+    const permissions = Object.fromEntries(
+      Object.entries(DEFAULT_PERMISSIONS).map(([role, defaults]) => [
+        role,
+        Object.fromEntries(
+          Object.keys(defaults).map((key) => [key, role === 'teacher' ? true : Boolean(record?.[role]?.[key])]),
+        ),
+      ]),
+    )
+    updateOperationalState((current) => withHistory({
+      ...current,
+      permissions,
+    }, user, 'Permissões operacionais atualizadas', 'sistema', 'permissions'), 'Permissões salvas com sucesso.')
+  }
+
+  function removeDemoData() {
+    updateOperationalState((current) => {
+      const next = {
+        ...current,
+        matrizes: current.matrizes.filter((item) => !DEMO_IDS.matrizes.has(item.id)),
+        varroes: current.varroes.filter((item) => !DEMO_IDS.varroes.has(item.id)),
+        coberturas: current.coberturas.filter((item) => !DEMO_IDS.coberturas.has(item.id)),
+        partos: current.partos.filter((item) => !DEMO_IDS.partos.has(item.id)),
+        lotes: current.lotes.filter((item) => !DEMO_IDS.lotes.has(item.id)),
+        sanitario: current.sanitario.filter((item) => !DEMO_IDS.sanitario.has(item.id)),
+        attachments: current.attachments.filter((item) => {
+          if (item.entityType === 'matriz') return !DEMO_IDS.matrizes.has(item.entityId)
+          if (item.entityType === 'cobertura') return !DEMO_IDS.coberturas.has(item.entityId)
+          if (item.entityType === 'parto') return !DEMO_IDS.partos.has(item.entityId)
+          if (item.entityType === 'lote') return !DEMO_IDS.lotes.has(item.entityId)
+          if (item.entityType === 'sanitario') return !DEMO_IDS.sanitario.has(item.entityId)
+          if (item.entityType === 'checklist') return ![...DEMO_IDS.lotes].some((id) => item.entityId.startsWith(`${id}:`))
+          return true
+        }),
+      }
+      return withHistory(next, user, 'Dados de demonstração removidos', 'sistema', 'main')
+    }, 'Somente os registros de demonstração foram removidos.')
   }
 
   function restoreDemoData() {
@@ -710,6 +923,11 @@ export function AppDataProvider({ children }) {
   }
 
   function importOperationalData(payload) {
+    const requiredCollections = ['matrizes', 'varroes', 'coberturas', 'partos', 'lotes', 'sanitario']
+    if (!payload || typeof payload !== 'object' || requiredCollections.some((key) => !Array.isArray(payload[key]))) {
+      notify('Backup incompatível. Use um arquivo exportado pelo Ciclo 114.')
+      return false
+    }
     updateOperationalState(() => withHistory(
       normalizeState(payload),
       user,
@@ -717,6 +935,7 @@ export function AppDataProvider({ children }) {
       'sistema',
       'main',
     ), 'Dados importados e sincronizados.')
+    return true
   }
 
   async function createStudent(record) {
@@ -824,6 +1043,7 @@ export function AppDataProvider({ children }) {
       classes,
       educationTotals,
       loading,
+      dataReady,
       syncStatus,
       addMatriz,
       updateMatriz,
@@ -849,6 +1069,13 @@ export function AppDataProvider({ children }) {
       addSanitario,
       updateSanitario,
       deleteSanitario,
+      addAttachment,
+      updateAttachment,
+      deleteAttachment,
+      updateSettings,
+      resetSettings,
+      updatePermissions,
+      removeDemoData,
       restoreDemoData,
       clearOperationalData,
       importOperationalData,
@@ -874,6 +1101,7 @@ export function AppDataProvider({ children }) {
       classes,
       educationTotals,
       loading,
+      dataReady,
       syncStatus,
     ],
   )
@@ -882,7 +1110,7 @@ export function AppDataProvider({ children }) {
     <AppDataContext.Provider value={value}>
       {children}
       {toast && (
-        <div className="fixed bottom-24 left-1/2 z-[80] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl bg-slate-950 px-5 py-4 text-center text-sm font-semibold text-white shadow-2xl lg:bottom-8">
+        <div role="status" aria-live="polite" className="fixed bottom-24 left-1/2 z-[80] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl bg-slate-950 px-5 py-4 text-center text-sm font-semibold text-white shadow-2xl lg:bottom-8">
           {toast}
         </div>
       )}

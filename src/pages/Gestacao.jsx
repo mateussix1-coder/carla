@@ -30,6 +30,7 @@ export default function Gestacao() {
     partos,
     lotes,
     sanitario,
+    settings,
     addParto,
   } = useAppData()
   const [filter, setFilter] = useState('all')
@@ -45,21 +46,21 @@ export default function Gestacao() {
           const coverage = coberturas
             .filter((item) => item.matrixId === matrix.id)
             .sort((a, b) => b.date.localeCompare(a.date))[0]
-          return coverage ? { matrix, coverage, ...gestationDetails(coverage.date) } : null
+          return coverage ? { matrix, coverage, ...gestationDetails(coverage.date, undefined, settings.alertDays) } : null
         })
         .filter(Boolean)
         .sort((a, b) => a.remaining - b.remaining),
-    [matrizes, coberturas],
+    [matrizes, coberturas, settings.alertDays],
   )
 
-  const upcoming = gestations.filter((item) => item.remaining >= 0 && item.remaining <= 7)
+  const upcoming = gestations.filter((item) => item.remaining >= 0 && item.remaining <= settings.alertDays)
   const overdue = gestations.filter((item) => item.remaining < 0)
-  const onTime = gestations.filter((item) => item.remaining > 7)
+  const onTime = gestations.filter((item) => item.remaining > settings.alertDays)
 
   const filteredGestations = gestations.filter((item) => {
-    if (filter === 'upcoming') return item.remaining >= 0 && item.remaining <= 7
+    if (filter === 'upcoming') return item.remaining >= 0 && item.remaining <= settings.alertDays
     if (filter === 'overdue') return item.remaining < 0
-    if (filter === 'onTime') return item.remaining > 7
+    if (filter === 'onTime') return item.remaining > settings.alertDays
     return true
   })
 
@@ -89,7 +90,7 @@ export default function Gestacao() {
           icon={CalendarClock}
           label="Partos próximos"
           value={upcoming.length}
-          detail="previstos em até 7 dias"
+          detail={`previstos em até ${settings.alertDays} dias`}
           tone="gold"
         />
         <SummaryCard
@@ -113,7 +114,7 @@ export default function Gestacao() {
           <div className="flex gap-3">
             <AlertTriangle size={21} className="mt-0.5 shrink-0 text-red-700" />
             <div className="min-w-0 flex-1">
-              <h2 className="text-sm font-bold">Parto previsto em até 7 dias</h2>
+              <h2 className="text-sm font-bold">Parto previsto em até {settings.alertDays} dias</h2>
               <p className="mt-1 text-xs leading-5 text-red-700">
                 Revise baia maternidade, materiais, ficha da matriz e equipe responsável.
               </p>
@@ -190,6 +191,7 @@ export default function Gestacao() {
       <BirthRegisterModal
         item={birthItem}
         alunos={alunos}
+        teacherName={settings.teacherName}
         addParto={addParto}
         onClose={() => setBirthItem(null)}
       />

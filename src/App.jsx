@@ -9,6 +9,7 @@ const Agenda = lazy(() => import('./pages/Agenda.jsx'))
 const Atividades = lazy(() => import('./pages/Atividades.jsx'))
 const Cadastro = lazy(() => import('./pages/Cadastro.jsx'))
 const Coberturas = lazy(() => import('./pages/Coberturas.jsx'))
+const Configuracoes = lazy(() => import('./pages/Configuracoes.jsx'))
 const DadosDemonstracao = lazy(() => import('./pages/DadosDemonstracao.jsx'))
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
 const Entrar = lazy(() => import('./pages/Entrar.jsx'))
@@ -98,6 +99,7 @@ export default function App() {
             <Route path="/atividades" element={<Atividades />} />
             <Route path="/agenda" element={<Agenda />} />
             <Route path="/perfil" element={<Perfil />} />
+            <Route path="/configuracoes" element={<TeacherOnly><Configuracoes /></TeacherOnly>} />
 
             <Route path="/matrizes" element={<TeacherOnly><Matrizes /></TeacherOnly>} />
             <Route path="/matrizes/:id" element={<TeacherOnly><MatrizDetalhe /></TeacherOnly>} />
@@ -111,6 +113,7 @@ export default function App() {
             <Route path="/relatorios" element={<TeacherOnly><Relatorios /></TeacherOnly>} />
             <Route path="/permissoes" element={<TeacherOnly><Permissoes /></TeacherOnly>} />
             <Route path="/dados-demonstracao" element={<TeacherOnly><DadosDemonstracao /></TeacherOnly>} />
+            <Route path="/dados" element={<TeacherOnly><DadosDemonstracao /></TeacherOnly>} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Route>

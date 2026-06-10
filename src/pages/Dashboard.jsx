@@ -19,24 +19,24 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { gestationDetails } from '../utils/calculations.js'
 import { formatDate, startOfMonth } from '../utils/dateUtils.js'
 
-function buildGestations(matrizes, coberturas) {
+function buildGestations(matrizes, coberturas, alertDays) {
   return matrizes
     .filter((matrix) => !matrix.archived && ['Prenha', 'Coberta', 'Próximo ao parto'].includes(matrix.status))
     .map((matrix) => {
       const coverage = coberturas
         .filter((item) => item.matrixId === matrix.id && item.status !== 'Falhou')
         .sort((a, b) => b.date.localeCompare(a.date))[0]
-      return coverage ? { matrix, coverage, ...gestationDetails(coverage.date) } : null
+      return coverage ? { matrix, coverage, ...gestationDetails(coverage.date, undefined, alertDays) } : null
     })
     .filter(Boolean)
     .sort((a, b) => a.remaining - b.remaining)
 }
 
 export default function Dashboard() {
-  const { matrizes, coberturas, partos, lotes, historico } = useAppData()
+  const { matrizes, coberturas, partos, lotes, historico, settings } = useAppData()
   const { user } = useAuth()
-  const gestations = buildGestations(matrizes, coberturas)
-  const upcoming = gestations.filter((item) => item.remaining >= 0 && item.remaining <= 7)
+  const gestations = buildGestations(matrizes, coberturas, settings.alertDays)
+  const upcoming = gestations.filter((item) => item.remaining >= 0 && item.remaining <= settings.alertDays)
   const overdue = gestations.filter((item) => item.remaining < 0)
   const bornThisMonth = partos
     .filter((birth) => birth.date >= startOfMonth())
@@ -97,7 +97,7 @@ export default function Dashboard() {
       <section className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-5">
         <StatCard title="Matrizes" value={matrizes.filter((item) => !item.archived).length} detail="no plantel ativo" icon={PiggyBank} />
         <StatCard title="Cobertas/prenhas" value={gestations.length} detail="em acompanhamento" icon={HeartPulse} theme="sky" />
-        <StatCard title="Partos próximos" value={upcoming.length} detail="em até 7 dias" icon={CalendarClock} theme="amber" />
+        <StatCard title="Partos próximos" value={upcoming.length} detail={`em até ${settings.alertDays} dias`} icon={CalendarClock} theme="amber" />
         <StatCard title="Partos atrasados" value={overdue.length} detail="exigem atenção" icon={AlertTriangle} theme="rose" />
         <StatCard title="Nascidos no mês" value={bornThisMonth} detail={`${pendingChecklist} manejos pendentes`} icon={Baby} theme="violet" />
       </section>
@@ -109,7 +109,7 @@ export default function Dashboard() {
               <h2 className="section-title">Partos próximos</h2>
               <p className="mt-1 text-xs text-slate-500">Ordem de prioridade calculada pelos 114 dias.</p>
             </div>
-            <Link to="/gestacao" className="text-xs font-bold text-[#0b6847]">Ver gestação</Link>
+            <Link to="/gestacao" className="inline-flex min-h-10 items-center text-xs font-bold text-[#0b6847]">Ver gestação</Link>
           </header>
           {gestations.length ? (
             <div className="divide-y divide-[#eee9df]">
@@ -123,7 +123,7 @@ export default function Dashboard() {
                         <StatusBadge>{stage}</StatusBadge>
                       </div>
                       <p className="mt-1 text-xs text-slate-500">Previsão: {formatDate(expectedDate)}</p>
-                      <strong className={`mt-1 block text-xs ${remaining < 0 ? 'text-red-700' : remaining <= 7 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                      <strong className={`mt-1 block text-xs ${remaining < 0 ? 'text-red-700' : remaining <= settings.alertDays ? 'text-amber-700' : 'text-emerald-700'}`}>
                         {remaining < 0 ? `${Math.abs(remaining)} dia(s) de atraso` : `Faltam ${remaining} dia(s)`}
                       </strong>
                     </div>

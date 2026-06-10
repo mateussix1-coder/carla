@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import AttachmentManager from '../components/AttachmentManager.jsx'
 import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import FormInput from '../components/FormInput.jsx'
 import FormSelect from '../components/FormSelect.jsx'
@@ -21,7 +22,7 @@ import { useAppData } from '../context/AppDataContext.jsx'
 import { gestationDetails, totalBorn } from '../utils/calculations.js'
 import { formatDate } from '../utils/dateUtils.js'
 
-const tabs = ['Resumo', 'Coberturas', 'Partos', 'Leitões', 'Sanitário', 'Histórico']
+const tabs = ['Resumo', 'Gestação', 'Coberturas', 'Partos', 'Leitões', 'Sanitário', 'Anexos', 'Histórico']
 const statuses = ['Vazia', 'Coberta', 'Prenha', 'Próximo ao parto', 'Parida', 'Lactação', 'Desmamada', 'Inativa']
 
 export default function MatrizDetalhe() {
@@ -35,6 +36,8 @@ export default function MatrizDetalhe() {
     lotes,
     sanitario,
     historico,
+    settings,
+    dataReady,
     updateMatriz,
     archiveMatriz,
     deleteMatriz,
@@ -45,6 +48,18 @@ export default function MatrizDetalhe() {
   const [confirming, setConfirming] = useState(false)
   const [form, setForm] = useState(matrix || {})
 
+  if (!matrix && !dataReady) {
+    return (
+      <div className="page-shell">
+        <div className="surface-card flex min-h-72 items-center justify-center">
+          <div className="text-center">
+            <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-700" />
+            <p className="mt-4 text-sm font-semibold text-slate-500">Carregando matriz...</p>
+          </div>
+        </div>
+      </div>
+    )
+  }
   if (!matrix) return <Navigate to="/matrizes" replace />
 
   const matrixCoverages = coberturas.filter((item) => item.matrixId === matrix.id).sort((a, b) => b.date.localeCompare(a.date))
@@ -54,7 +69,7 @@ export default function MatrizDetalhe() {
   const matrixSanitary = sanitario.filter((item) => item.related === matrix.id || lotIds.includes(item.related))
   const matrixHistory = historico.filter((item) => item.entityId === matrix.id || matrixCoverages.some((coverage) => coverage.id === item.entityId) || matrixBirths.some((birth) => birth.id === item.entityId))
   const currentCoverage = matrixCoverages.find((item) => !['Falhou', 'Finalizada'].includes(item.status))
-  const gestation = currentCoverage ? gestationDetails(currentCoverage.date) : null
+  const gestation = currentCoverage ? gestationDetails(currentCoverage.date, undefined, settings.alertDays) : null
   const currentBoar = currentCoverage ? varroes.find((item) => item.id === currentCoverage.boarId) : null
   const totalPiglets = matrixBirths.reduce((sum, birth) => sum + totalBorn(birth), 0)
 
@@ -135,6 +150,47 @@ export default function MatrizDetalhe() {
           </article>
         )}
 
+        {tab === 'Gestação' && (
+          gestation ? (
+            <article className="surface-card p-5 sm:p-7">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#ad7b22]">Ciclo atual</span>
+                  <h2 className="mt-1 text-2xl font-bold text-[#073f2b]">
+                    {gestation.remaining < 0
+                      ? `${Math.abs(gestation.remaining)} dia(s) de atraso`
+                      : `Faltam ${gestation.remaining} dia(s) para o parto`}
+                  </h2>
+                  <p className="mt-2 text-sm text-slate-500">{gestation.elapsed}/114 dias · previsão em {formatDate(gestation.expectedDate)}</p>
+                </div>
+                <StatusBadge>{gestation.stage}</StatusBadge>
+              </div>
+              <div className="mt-7 h-2 overflow-hidden rounded-full bg-[#e7e3d9]">
+                <div className="h-full rounded-full bg-[linear-gradient(90deg,#0b6847,#d0a44c)]" style={{ width: `${gestation.progress}%` }} />
+              </div>
+              <div className="mt-7 grid grid-cols-5 gap-2">
+                {[
+                  ['Cobertura', 0],
+                  ['Diagnóstico', 24],
+                  ['Vacinas', 70],
+                  ['Pré-parto', 100],
+                  ['Parto', 114],
+                ].map(([label, day]) => {
+                  const completed = gestation.elapsed >= day
+                  return (
+                    <div key={label} className="text-center">
+                      <span className={`mx-auto grid h-8 w-8 place-items-center rounded-full border text-[10px] font-bold ${completed ? 'border-[#0b6847] bg-[#0b6847] text-white' : 'border-[#d8d3c7] bg-white text-slate-400'}`}>
+                        {day}
+                      </span>
+                      <span className="mt-2 block text-[9px] font-semibold text-slate-500">{label}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </article>
+          ) : <EmptyBlock text="Nenhuma gestação ativa para esta matriz." />
+        )}
+
         {tab === 'Coberturas' && (
           <div className="space-y-3">
             {matrixCoverages.map((coverage) => (
@@ -195,6 +251,10 @@ export default function MatrizDetalhe() {
             ))}
             {!matrixSanitary.length && <EmptyBlock text="Nenhum registro sanitário." />}
           </div>
+        )}
+
+        {tab === 'Anexos' && (
+          <AttachmentManager entityType="matriz" entityId={matrix.id} title={`Evidências de ${matrix.name}`} />
         )}
 
         {tab === 'Histórico' && (

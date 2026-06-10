@@ -6,7 +6,7 @@ export function expectedBirthDate(coverageDate) {
   return addDays(coverageDate, GESTATION_DAYS)
 }
 
-export function gestationDetails(coverageDate, reference = toISODate()) {
+export function gestationDetails(coverageDate, reference = toISODate(), alertDays = 7) {
   const expectedDate = expectedBirthDate(coverageDate)
   const elapsed = Math.max(0, differenceInDays(reference, coverageDate))
   const remaining = differenceInDays(expectedDate, reference)
@@ -14,7 +14,7 @@ export function gestationDetails(coverageDate, reference = toISODate()) {
 
   let stage = 'Dentro do prazo'
   if (remaining < 0) stage = 'Atrasada'
-  else if (remaining <= 7) stage = 'Próximo ao parto'
+  else if (remaining <= Number(alertDays || 7)) stage = 'Próximo ao parto'
 
   return { expectedDate, elapsed, remaining, progress, stage }
 }

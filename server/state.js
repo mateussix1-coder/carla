@@ -38,6 +38,8 @@ export default async function handler(request, response) {
           partos: [],
           varroes: [],
           sanitario: [],
+          settings: data.settings || {},
+          permissions: data.permissions || {},
         }
 
     return sendJson(response, 200, {

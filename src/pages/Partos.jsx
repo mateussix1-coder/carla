@@ -4,12 +4,14 @@ import {
   Clock,
   Edit3,
   Eye,
+  Paperclip,
   Plus,
   Stethoscope,
   Trash2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import AttachmentManager from '../components/AttachmentManager.jsx'
 import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import FormInput from '../components/FormInput.jsx'
@@ -41,6 +43,7 @@ export default function Partos() {
     matrizes,
     coberturas,
     alunos,
+    settings,
     addParto,
     updateParto,
     deleteParto,
@@ -49,6 +52,7 @@ export default function Partos() {
   const [editingId, setEditingId] = useState('')
   const [form, setForm] = useState(initialForm)
   const [confirming, setConfirming] = useState(null)
+  const [attachmentsFor, setAttachmentsFor] = useState(null)
   const total = useMemo(() => totalBorn(form), [form])
 
   const priorities = matrizes
@@ -57,9 +61,9 @@ export default function Partos() {
       const coverage = coberturas
         .filter((item) => item.matrixId === matrix.id && !['Falhou', 'Finalizada'].includes(item.status))
         .sort((a, b) => b.date.localeCompare(a.date))[0]
-      return coverage ? { matrix, coverage, ...gestationDetails(coverage.date) } : null
+      return coverage ? { matrix, coverage, ...gestationDetails(coverage.date, undefined, settings.alertDays) } : null
     })
-    .filter((item) => item && item.remaining <= 7)
+    .filter((item) => item && item.remaining <= settings.alertDays)
     .sort((a, b) => a.remaining - b.remaining)
 
   const matrixName = (id) => {
@@ -69,7 +73,7 @@ export default function Partos() {
 
   function openCreate(matrixId = '') {
     setEditingId('')
-    setForm({ ...initialForm, matrixId })
+    setForm({ ...initialForm, matrixId, responsible: settings.teacherName })
     setOpen(true)
   }
 
@@ -128,7 +132,7 @@ export default function Partos() {
             ))}
           </div>
         ) : (
-          <div className="surface-card p-5 text-sm text-slate-500">Nenhuma matriz prevista para os próximos 7 dias.</div>
+          <div className="surface-card p-5 text-sm text-slate-500">Nenhuma matriz prevista para os próximos {settings.alertDays} dias.</div>
         )}
       </section>
 
@@ -165,8 +169,9 @@ export default function Partos() {
                 <span>Responsável: <strong className="text-slate-700">{birth.responsible}</strong></span>
               </div>
               {birth.notes && <p className="mt-4 rounded-2xl bg-[#f7f5ef] p-4 text-sm leading-6 text-slate-600">{birth.notes}</p>}
-              <div className="mt-5 grid grid-cols-3 gap-2 border-t border-[#eee9df] pt-4">
+              <div className="mt-5 grid grid-cols-2 gap-2 border-t border-[#eee9df] pt-4 sm:grid-cols-4">
                 <Link to="/leitoes" className="action-button"><Eye size={15} /> Ninhada</Link>
+                <button className="action-button" onClick={() => setAttachmentsFor(birth)}><Paperclip size={15} /> Anexos</button>
                 <button className="action-button" onClick={() => openEdit(birth)}><Edit3 size={15} /> Editar</button>
                 <button className="action-button action-danger" onClick={() => setConfirming(birth)}><Trash2 size={15} /> Excluir</button>
               </div>
@@ -194,11 +199,15 @@ export default function Partos() {
           <FormInput label="Natimortos" required type="number" min="0" value={form.stillborn} onChange={(e) => setForm({ ...form, stillborn: e.target.value })} />
           <FormInput label="Mumificados" required type="number" min="0" value={form.mummified} onChange={(e) => setForm({ ...form, mummified: e.target.value })} />
           <div className="sm:col-span-2 flex items-center justify-between rounded-2xl border border-[#d8c79e] bg-[#f8f2e5] p-5 text-[#082f1f]"><span className="flex items-center gap-3 text-sm font-semibold"><Baby size={22} className="text-[#ad7b22]" /> Total calculado</span><strong className="text-3xl font-bold">{total}</strong></div>
-          <FormSelect label="Responsável" required options={['Profª Carla', ...alunos.map((item) => item.name)]} value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} />
+          <FormSelect label="Responsável" required options={[settings.teacherName, ...alunos.map((item) => item.name)]} value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} />
           <label className="sm:col-span-2"><span className="field-label">Observações do parto</span><textarea className="field-control min-h-24 py-3" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           <label className="sm:col-span-2"><span className="field-label">Ocorrências</span><textarea className="field-control min-h-24 py-3" value={form.occurrences} onChange={(e) => setForm({ ...form, occurrences: e.target.value })} /></label>
           <div className="modal-actions sm:col-span-2"><button type="button" className="secondary-button" onClick={() => setOpen(false)}>Cancelar</button><button className="primary-button">{editingId ? 'Salvar alterações' : 'Salvar e criar ninhada'}</button></div>
         </form>
+      </Modal>
+
+      <Modal open={Boolean(attachmentsFor)} onClose={() => setAttachmentsFor(null)} title={`Anexos do parto ${attachmentsFor?.id || ''}`} size="max-w-4xl">
+        {attachmentsFor && <AttachmentManager entityType="parto" entityId={attachmentsFor.id} title="Evidências do parto" />}
       </Modal>
 
       <ConfirmDialog

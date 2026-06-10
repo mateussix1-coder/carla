@@ -65,7 +65,8 @@ const teacherGroups = [
     label: 'Configurações',
     items: [
       { to: '/permissoes', label: 'Permissões', icon: ShieldCheck },
-      { to: '/perfil', label: 'Configurações', icon: Settings2 },
+      { to: '/configuracoes', label: 'Configurações', icon: Settings2 },
+      { to: '/perfil', label: 'Meu perfil', icon: UserRound },
       { to: '/dados-demonstracao', label: 'Dados e backup', icon: Database },
     ],
   },
@@ -102,7 +103,9 @@ const pageTitles = {
   '/sanitario': 'Sanitário',
   '/relatorios': 'Relatórios',
   '/permissoes': 'Permissões',
-  '/perfil': 'Configurações',
+  '/configuracoes': 'Configurações',
+  '/perfil': 'Meu perfil',
+  '/dados': 'Dados e backup',
   '/dados-demonstracao': 'Dados e backup',
 }
 
@@ -121,7 +124,7 @@ function UserAvatar({ user, size = 'h-10 w-10' }) {
 
 function DesktopSidebar({ groups }) {
   const { user, logout } = useAuth()
-  const { syncStatus, educationTotals } = useAppData()
+  const { syncStatus, educationTotals, settings } = useAppData()
 
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-[276px] flex-col border-r border-white/10 bg-[linear-gradient(180deg,#063b28_0%,#075036_56%,#063b28_100%)] text-white shadow-[12px_0_40px_rgba(6,59,40,0.12)] lg:flex">
@@ -130,7 +133,7 @@ function DesktopSidebar({ groups }) {
           <PiggyBank size={24} strokeWidth={1.7} />
         </span>
         <div>
-          <strong className="display-serif block text-2xl font-normal leading-none">Ciclo 114</strong>
+          <strong className="display-serif block text-2xl font-normal leading-none">{settings.systemName}</strong>
           <span className="mt-1 block text-[9px] font-semibold uppercase tracking-[0.22em] text-white/55">
             Gestão zootécnica
           </span>
@@ -210,14 +213,14 @@ function DesktopSidebar({ groups }) {
 
 function DesktopHeader() {
   const { user } = useAuth()
-  const { educationTotals } = useAppData()
+  const { educationTotals, settings } = useAppData()
   const location = useLocation()
   const basePath = location.pathname.startsWith('/turmas/') ? '/turmas' : location.pathname
 
   return (
     <header className="sticky top-0 z-30 hidden h-[72px] items-center justify-between border-b border-[#e2ddd2] bg-[#f7f4ed]/90 px-8 backdrop-blur-xl lg:flex">
       <div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#ad7b22]">Ciclo 114</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#ad7b22]">{settings.systemName}</p>
         <strong className="mt-1 block text-sm text-[#073f2b]">{pageTitles[basePath] || 'Gestão acadêmica'}</strong>
       </div>
       <div className="flex items-center gap-3">
@@ -239,13 +242,13 @@ function DesktopHeader() {
 
 function MobileHeader() {
   const { user } = useAuth()
-  const { educationTotals } = useAppData()
+  const { educationTotals, settings } = useAppData()
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[linear-gradient(135deg,#063b28,#0b5136)] px-4 text-white shadow-md lg:hidden">
       <div className="flex items-center gap-2.5">
         <PiggyBank size={22} strokeWidth={1.7} className="text-[#e2c170]" />
         <div>
-          <strong className="display-serif block text-lg font-normal leading-none">Ciclo 114</strong>
+          <strong className="display-serif block text-lg font-normal leading-none">{settings.systemName}</strong>
           <span className="text-[8px] uppercase tracking-[0.18em] text-white/55">
             {user.role === 'teacher' ? 'Gestão zootécnica' : 'Portal do aluno'}
           </span>

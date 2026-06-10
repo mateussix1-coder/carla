@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   Edit3,
   HeartPulse,
+  Paperclip,
   Plus,
   Stethoscope,
   Trash2,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import AttachmentManager from '../components/AttachmentManager.jsx'
 import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import FormInput from '../components/FormInput.jsx'
@@ -37,6 +39,7 @@ export default function Coberturas() {
     matrizes,
     varroes,
     alunos,
+    settings,
     addCobertura,
     updateCobertura,
     setCoberturaStatus,
@@ -46,6 +49,7 @@ export default function Coberturas() {
   const [editingId, setEditingId] = useState('')
   const [form, setForm] = useState(initialForm)
   const [confirming, setConfirming] = useState(null)
+  const [attachmentsFor, setAttachmentsFor] = useState(null)
 
   const matrixName = (id) => {
     const matrix = matrizes.find((item) => item.id === id)
@@ -58,7 +62,7 @@ export default function Coberturas() {
 
   function openCreate() {
     setEditingId('')
-    setForm(initialForm)
+    setForm({ ...initialForm, responsible: settings.teacherName })
     setOpen(true)
   }
 
@@ -124,6 +128,7 @@ export default function Coberturas() {
 
               <div className="mt-5 grid grid-cols-2 gap-2 border-t border-[#eee9df] pt-4 sm:flex sm:flex-wrap">
                 <button className="action-button" onClick={() => openEdit(coverage)}><Edit3 size={15} /> Editar</button>
+                <button className="action-button" onClick={() => setAttachmentsFor(coverage)}><Paperclip size={15} /> Anexos</button>
                 {coverage.status === 'Aguardando confirmação' && (
                   <>
                     <button className="action-button action-success" onClick={() => setCoberturaStatus(coverage.id, 'Prenhez confirmada')}><CheckCircle2 size={15} /> Confirmar prenhez</button>
@@ -149,7 +154,7 @@ export default function Coberturas() {
           <FormInput label="Data da cobertura" required type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
           <FormSelect label="Tipo de cobertura" required options={['Monta natural', 'Inseminação artificial', 'Outro']} placeholder="" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} />
           {editingId && <FormSelect label="Status" options={['Aguardando confirmação', 'Prenhez confirmada', 'Falhou', 'Finalizada']} placeholder="" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} />}
-          <FormSelect label="Responsável" required options={['Profª Carla', ...alunos.map((item) => item.name)]} value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} />
+          <FormSelect label="Responsável" required options={[settings.teacherName, ...alunos.map((item) => item.name)]} value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} />
           <label className="sm:col-span-2"><span className="field-label">Observações</span><textarea className="field-control min-h-24 py-3" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           {form.date && (
             <div className="sm:col-span-2 rounded-2xl border border-[#d8c79e] border-l-4 border-l-[#ad7b22] bg-[#f8f2e5] p-5">
@@ -160,6 +165,10 @@ export default function Coberturas() {
           )}
           <div className="modal-actions sm:col-span-2"><button type="button" onClick={() => setOpen(false)} className="secondary-button">Cancelar</button><button className="primary-button">{editingId ? 'Salvar alterações' : 'Salvar cobertura'}</button></div>
         </form>
+      </Modal>
+
+      <Modal open={Boolean(attachmentsFor)} onClose={() => setAttachmentsFor(null)} title={`Anexos da cobertura ${attachmentsFor?.id || ''}`} size="max-w-4xl">
+        {attachmentsFor && <AttachmentManager entityType="cobertura" entityId={attachmentsFor.id} title="Evidências da cobertura" />}
       </Modal>
 
       <ConfirmDialog

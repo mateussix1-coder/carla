@@ -3,6 +3,7 @@ import {
   Download,
   Eraser,
   FileJson,
+  ListX,
   RefreshCw,
   ShieldCheck,
   Upload,
@@ -22,8 +23,12 @@ export default function DadosDemonstracao() {
     lotes,
     sanitario,
     historico,
+    attachments,
+    settings,
+    permissions,
     syncStatus,
     restoreDemoData,
+    removeDemoData,
     clearOperationalData,
     importOperationalData,
     notify,
@@ -36,7 +41,18 @@ export default function DadosDemonstracao() {
     const payload = {
       exportedAt: new Date().toISOString(),
       version: 1,
-      data: { matrizes, varroes, coberturas, partos, lotes, sanitario, historico },
+      data: {
+        matrizes,
+        varroes,
+        coberturas,
+        partos,
+        lotes,
+        sanitario,
+        historico,
+        attachments,
+        settings,
+        permissions,
+      },
     }
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -106,12 +122,13 @@ export default function DadosDemonstracao() {
             <button className="secondary-button min-h-20 flex-col" onClick={exportData}><Download size={20} /> Exportar backup JSON</button>
             <button className="secondary-button min-h-20 flex-col" onClick={() => fileRef.current?.click()}><Upload size={20} /> Importar backup JSON</button>
             <button className="action-button action-warning min-h-20 flex-col" onClick={() => setConfirming('restore')}><RefreshCw size={20} /> Restaurar exemplos</button>
+            <button className="action-button action-warning min-h-20 flex-col" onClick={() => setConfirming('remove-demo')}><ListX size={20} /> Remover só exemplos</button>
             <button className="action-button action-danger min-h-20 flex-col" onClick={() => setConfirming('clear')}><Eraser size={20} /> Limpar dados operacionais</button>
           </div>
           <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importFile} />
           <div className="mt-5 flex gap-3 rounded-2xl border border-[#e2ddd2] bg-[#f7f5ef] p-4">
             <FileJson size={20} className="shrink-0 text-[#ad7b22]" />
-            <p className="text-xs leading-5 text-slate-600">O backup inclui matrizes, varrões, coberturas, partos, ninhadas, checklists, pesagens, sanitário e histórico. Contas e turmas continuam protegidas separadamente no banco.</p>
+            <p className="text-xs leading-5 text-slate-600">O backup inclui matrizes, varrões, coberturas, partos, ninhadas, checklists, pesagens, anexos por URL, sanitário, configurações, permissões e histórico. Contas e turmas continuam protegidas separadamente no banco.</p>
           </div>
         </article>
       </section>
@@ -122,8 +139,21 @@ export default function DadosDemonstracao() {
         title="Limpar todos os dados operacionais?"
         description="Isso apagará matrizes, varrões, coberturas, partos, ninhadas e registros sanitários atuais do banco. Turmas e contas não serão afetadas."
         confirmLabel="Sim, limpar dados"
+        confirmationText="CONFIRMAR"
         onConfirm={() => {
           clearOperationalData()
+          setConfirming('')
+        }}
+      />
+
+      <ConfirmDialog
+        open={confirming === 'remove-demo'}
+        onClose={() => setConfirming('')}
+        title="Remover apenas os dados de exemplo?"
+        description="Os registros iniciais M001 a M005 e seus vínculos demonstrativos serão removidos. Cadastros criados por você serão preservados."
+        confirmLabel="Remover exemplos"
+        onConfirm={() => {
+          removeDemoData()
           setConfirming('')
         }}
       />

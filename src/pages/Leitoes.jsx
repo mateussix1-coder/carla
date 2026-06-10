@@ -5,12 +5,14 @@ import {
   Circle,
   ClipboardCheck,
   Edit3,
+  Paperclip,
   Plus,
   RotateCcw,
   Scale,
   Trash2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import AttachmentManager from '../components/AttachmentManager.jsx'
 import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import FormInput from '../components/FormInput.jsx'
@@ -36,6 +38,7 @@ export default function Leitoes() {
     lotes,
     matrizes,
     alunos,
+    settings,
     addPesagem,
     updateLote,
     deleteLote,
@@ -45,11 +48,12 @@ export default function Leitoes() {
   const [weightOpen, setWeightOpen] = useState(false)
   const [selectedLot, setSelectedLot] = useState('')
   const [weight, setWeight] = useState('')
-  const [weightResponsible, setWeightResponsible] = useState('Profª Carla')
+  const [weightResponsible, setWeightResponsible] = useState(settings.teacherName)
   const [checkItem, setCheckItem] = useState(null)
-  const [checkForm, setCheckForm] = useState({ date: toISODate(), responsible: 'Profª Carla', notes: '' })
+  const [checkForm, setCheckForm] = useState({ date: toISODate(), responsible: settings.teacherName, notes: '' })
   const [editingLot, setEditingLot] = useState(null)
   const [confirming, setConfirming] = useState(null)
+  const [attachmentsFor, setAttachmentsFor] = useState(null)
   const selected = useMemo(() => lotes.find((lot) => lot.id === selectedLot), [lotes, selectedLot])
   const selectedPhase = selected ? nextWeighing(selected.weights) : ''
 
@@ -62,7 +66,7 @@ export default function Leitoes() {
   function openWeight(lotId = '') {
     setSelectedLot(lotId)
     setWeight('')
-    setWeightResponsible('Profª Carla')
+    setWeightResponsible(settings.teacherName)
     setWeightOpen(true)
   }
 
@@ -79,7 +83,7 @@ export default function Leitoes() {
     setCheckItem({ lot, item })
     setCheckForm({
       date: record?.date || toISODate(),
-      responsible: record?.responsible || lot.responsible || 'Profª Carla',
+      responsible: record?.responsible || lot.responsible || settings.teacherName,
       notes: record?.notes || '',
     })
   }
@@ -174,8 +178,9 @@ export default function Leitoes() {
                                 ) : <p className="mt-1 text-[11px] text-slate-400">Pendente</p>}
                               </div>
                             </div>
-                            <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className={`mt-3 grid gap-2 ${record?.completed ? 'grid-cols-3' : 'grid-cols-2'}`}>
                               <button className="action-button" onClick={() => openChecklist(lot, item)}><Edit3 size={14} /> {record?.completed ? 'Editar' : 'Concluir'}</button>
+                              <button className="action-button" onClick={() => setAttachmentsFor({ entityType: 'checklist', entityId: `${lot.id}:${item.key}`, title: item.label })}><Paperclip size={14} /> Anexos</button>
                               {record?.completed && <button className="action-button action-warning" onClick={() => undoChecklistItem(lot.id, item.key)}><RotateCcw size={14} /> Desfazer</button>}
                             </div>
                           </div>
@@ -203,8 +208,9 @@ export default function Leitoes() {
                     </div>
                   </div>
 
-                  <div className="mt-5 grid grid-cols-2 gap-2 border-t border-[#eee9df] pt-4">
+                  <div className="mt-5 grid grid-cols-3 gap-2 border-t border-[#eee9df] pt-4">
                     <button className="action-button" onClick={() => setEditingLot({ ...lot })}><Edit3 size={15} /> Editar ninhada</button>
+                    <button className="action-button" onClick={() => setAttachmentsFor({ entityType: 'lote', entityId: lot.id, title: `Ninhada ${lot.id}` })}><Paperclip size={15} /> Anexos</button>
                     <button className="action-button action-danger" onClick={() => setConfirming(lot)}><Trash2 size={15} /> Excluir</button>
                   </div>
                 </div>
@@ -232,7 +238,7 @@ export default function Leitoes() {
             </div>
           )}
           <FormInput label="Peso médio (kg)" required type="number" min="0.1" step="0.01" value={weight} onChange={(e) => setWeight(e.target.value)} />
-          <FormSelect label="Responsável" required options={['Profª Carla', ...alunos.map((item) => item.name)]} value={weightResponsible} onChange={(e) => setWeightResponsible(e.target.value)} />
+          <FormSelect label="Responsável" required options={[settings.teacherName, ...alunos.map((item) => item.name)]} value={weightResponsible} onChange={(e) => setWeightResponsible(e.target.value)} />
           <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setWeightOpen(false)}>Cancelar</button><button className="primary-button" disabled={!selectedPhase}>Salvar pesagem</button></div>
         </form>
       </Modal>
@@ -241,7 +247,7 @@ export default function Leitoes() {
         {checkItem && (
           <form onSubmit={submitChecklist} className="space-y-4">
             <FormInput label="Data de realização" required type="date" value={checkForm.date} onChange={(e) => setCheckForm({ ...checkForm, date: e.target.value })} />
-            <FormSelect label="Responsável" required options={['Profª Carla', ...alunos.map((item) => item.name)]} value={checkForm.responsible} onChange={(e) => setCheckForm({ ...checkForm, responsible: e.target.value })} />
+            <FormSelect label="Responsável" required options={[settings.teacherName, ...alunos.map((item) => item.name)]} value={checkForm.responsible} onChange={(e) => setCheckForm({ ...checkForm, responsible: e.target.value })} />
             <label><span className="field-label">Observação</span><textarea className="field-control min-h-24 py-3" value={checkForm.notes} onChange={(e) => setCheckForm({ ...checkForm, notes: e.target.value })} placeholder="Ex.: realizado em todos os leitões" /></label>
             <div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setCheckItem(null)}>Cancelar</button><button className="primary-button">Salvar conclusão</button></div>
           </form>
@@ -252,13 +258,17 @@ export default function Leitoes() {
         {editingLot && (
           <form onSubmit={submitLot} className="grid gap-4 sm:grid-cols-2">
             <FormInput label="Quantidade atual" required type="number" min="0" max={editingLot.alive} value={editingLot.currentQuantity} onChange={(e) => setEditingLot({ ...editingLot, currentQuantity: e.target.value })} />
-            <FormSelect label="Responsável" options={['Profª Carla', ...alunos.map((item) => item.name)]} value={editingLot.responsible || ''} onChange={(e) => setEditingLot({ ...editingLot, responsible: e.target.value })} />
+            <FormSelect label="Responsável" options={[settings.teacherName, ...alunos.map((item) => item.name)]} value={editingLot.responsible || ''} onChange={(e) => setEditingLot({ ...editingLot, responsible: e.target.value })} />
             <FormInput label="Data do desmame" type="date" value={editingLot.weanedAt || ''} onChange={(e) => setEditingLot({ ...editingLot, weanedAt: e.target.value })} />
             <label className="sm:col-span-2"><span className="field-label">Observações</span><textarea className="field-control min-h-20 py-3" value={editingLot.notes || ''} onChange={(e) => setEditingLot({ ...editingLot, notes: e.target.value })} /></label>
             <label className="sm:col-span-2"><span className="field-label">Ocorrências</span><textarea className="field-control min-h-20 py-3" value={editingLot.occurrences || ''} onChange={(e) => setEditingLot({ ...editingLot, occurrences: e.target.value })} /></label>
             <div className="modal-actions sm:col-span-2"><button type="button" className="secondary-button" onClick={() => setEditingLot(null)}>Cancelar</button><button className="primary-button">Salvar alterações</button></div>
           </form>
         )}
+      </Modal>
+
+      <Modal open={Boolean(attachmentsFor)} onClose={() => setAttachmentsFor(null)} title={`Anexos · ${attachmentsFor?.title || ''}`} size="max-w-4xl">
+        {attachmentsFor && <AttachmentManager entityType={attachmentsFor.entityType} entityId={attachmentsFor.entityId} title="Fotos, vídeos e documentos" />}
       </Modal>
 
       <ConfirmDialog

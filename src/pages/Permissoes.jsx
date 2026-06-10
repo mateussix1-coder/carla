@@ -4,12 +4,14 @@ import {
   History,
   KeyRound,
   Link2,
+  Save,
   ShieldCheck,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ErrorState, LoadingState } from '../components/education/StatePanel.jsx'
 import PageHeader from '../components/PageHeader.jsx'
 import StatCard from '../components/StatCard.jsx'
+import { useAppData } from '../context/AppDataContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 
 const eventLabels = {
@@ -26,7 +28,9 @@ const eventLabels = {
 
 export default function Permissoes() {
   const { apiRequest } = useAuth()
+  const { permissions, updatePermissions } = useAppData()
   const [data, setData] = useState(null)
+  const [draft, setDraft] = useState(permissions)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -46,6 +50,10 @@ export default function Permissoes() {
     load()
   }, [])
 
+  useEffect(() => {
+    setDraft(permissions)
+  }, [permissions])
+
   if (loading) return <div className="page-shell"><LoadingState label="Carregando permissões..." /></div>
   if (error) return <div className="page-shell"><ErrorState message={error} onRetry={load} /></div>
 
@@ -56,6 +64,61 @@ export default function Permissoes() {
         title="Permissões"
         description="Regras de entrada, convites ativos e histórico de decisões da professora."
       />
+
+      <section className="surface-card mb-5 overflow-hidden">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e9e4da] p-5 sm:p-6">
+          <div>
+            <h2 className="section-title">Permissões operacionais</h2>
+            <p className="mt-1 text-xs text-slate-500">Defina o que monitores e alunos podem fazer nos registros de manejo.</p>
+          </div>
+          <button className="primary-button" onClick={() => updatePermissions(draft)}>
+            <Save size={16} />
+            Salvar permissões
+          </button>
+        </header>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="bg-[#f7f5ef] text-[10px] uppercase tracking-wider text-slate-500">
+              <tr>
+                <th className="px-5 py-4">Ação</th>
+                <th className="px-5 py-4">Professora</th>
+                <th className="px-5 py-4">Monitor</th>
+                <th className="px-5 py-4">Aluno</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#eee9df]">
+              {[
+                ['viewAnimals', 'Visualizar animais e ninhadas'],
+                ['editAnimals', 'Criar e editar cadastros'],
+                ['recordManagement', 'Registrar manejos e evidências'],
+                ['manageStudents', 'Administrar alunos e turmas'],
+                ['viewReports', 'Visualizar relatórios'],
+              ].map(([key, label]) => (
+                <tr key={key}>
+                  <th className="px-5 py-4 font-semibold text-[#073f2b]">{label}</th>
+                  {['teacher', 'monitor', 'student'].map((role) => (
+                    <td key={role} className="px-5 py-4">
+                      <label className="inline-flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(draft?.[role]?.[key])}
+                          disabled={role === 'teacher'}
+                          onChange={(event) => setDraft({
+                            ...draft,
+                            [role]: { ...draft[role], [key]: event.target.checked },
+                          })}
+                          className="h-5 w-5 accent-[#0b6847]"
+                        />
+                        <span className="text-xs text-slate-500">{draft?.[role]?.[key] ? 'Permitido' : 'Bloqueado'}</span>
+                      </label>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard title="Aprovações pendentes" value={data.totals.pending} detail="aguardando revisão" icon={Clock3} theme="amber" />

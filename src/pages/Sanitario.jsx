@@ -1,5 +1,6 @@
-import { Edit3, Filter, Pill, Plus, ShieldPlus, Syringe, Trash2 } from 'lucide-react'
+import { Edit3, Filter, Paperclip, Pill, Plus, ShieldPlus, Syringe, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import AttachmentManager from '../components/AttachmentManager.jsx'
 import ConfirmDialog from '../components/ConfirmDialog.jsx'
 import EmptyState from '../components/EmptyState.jsx'
 import FormInput from '../components/FormInput.jsx'
@@ -27,6 +28,7 @@ export default function Sanitario() {
     matrizes,
     lotes,
     alunos,
+    settings,
     addSanitario,
     updateSanitario,
     deleteSanitario,
@@ -36,6 +38,7 @@ export default function Sanitario() {
   const [editingId, setEditingId] = useState('')
   const [form, setForm] = useState(initialForm)
   const [confirming, setConfirming] = useState(null)
+  const [attachmentsFor, setAttachmentsFor] = useState(null)
   const filtered = useMemo(
     () => sanitario.filter((record) => filter === 'Todos' || record.type === filter),
     [sanitario, filter],
@@ -43,7 +46,7 @@ export default function Sanitario() {
 
   function openCreate() {
     setEditingId('')
-    setForm(initialForm)
+    setForm({ ...initialForm, responsible: settings.teacherName })
     setOpen(true)
   }
 
@@ -100,7 +103,8 @@ export default function Sanitario() {
               <div className="sm:text-right">
                 <strong className="block text-sm text-slate-800">{formatDate(record.date)}</strong>
                 {record.nextDate && <span className="text-xs text-amber-600">Próxima: {formatDate(record.nextDate)}</span>}
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button className="action-button" onClick={() => setAttachmentsFor(record)}><Paperclip size={14} /> Anexos</button>
                   <button className="action-button" onClick={() => openEdit(record)}><Edit3 size={14} /> Editar</button>
                   <button className="action-button action-danger" onClick={() => setConfirming(record)}><Trash2 size={14} /> Excluir</button>
                 </div>
@@ -119,11 +123,15 @@ export default function Sanitario() {
           <FormInput label="Data" required type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
           <FormSelect label="Animal ou ninhada" required options={[...matrizes.map((item) => ({ value: item.id, label: `Matriz ${item.id} · ${item.name}` })), ...lotes.map((item) => ({ value: item.id, label: `Ninhada ${item.id}` }))]} value={form.related} onChange={(e) => setForm({ ...form, related: e.target.value })} />
           <FormInput label="Dosagem (opcional)" value={form.dosage} onChange={(e) => setForm({ ...form, dosage: e.target.value })} />
-          <FormSelect label="Responsável" required options={['Profª Carla', ...alunos.map((item) => item.name)]} value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} />
+          <FormSelect label="Responsável" required options={[settings.teacherName, ...alunos.map((item) => item.name)]} value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} />
           <FormInput label="Próxima aplicação" type="date" value={form.nextDate} onChange={(e) => setForm({ ...form, nextDate: e.target.value })} />
           <label className="sm:col-span-2"><span className="field-label">Observações</span><textarea className="field-control min-h-24 py-3" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           <div className="modal-actions sm:col-span-2"><button type="button" className="secondary-button" onClick={() => setOpen(false)}>Cancelar</button><button className="primary-button">{editingId ? 'Salvar alterações' : 'Salvar registro'}</button></div>
         </form>
+      </Modal>
+
+      <Modal open={Boolean(attachmentsFor)} onClose={() => setAttachmentsFor(null)} title={`Anexos · ${attachmentsFor?.product || ''}`} size="max-w-4xl">
+        {attachmentsFor && <AttachmentManager entityType="sanitario" entityId={attachmentsFor.id} title="Evidências do manejo sanitário" />}
       </Modal>
 
       <ConfirmDialog

@@ -13,7 +13,7 @@ export default function PhotoPlaceholder({ compact = false }) {
         <Plus size={13} className="absolute -right-1 -top-1 rounded-full bg-white" />
       </span>
       <span className="mt-3 text-sm font-bold">Adicionar foto</span>
-      <span className="mt-1 text-xs text-slate-400">Área demonstrativa</span>
+      <span className="mt-1 text-xs text-slate-400">Imagem do registro</span>
     </button>
   )
 }

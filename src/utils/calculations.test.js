@@ -32,6 +32,12 @@ test('gestação com mais de sete dias fica dentro do prazo', () => {
   assert.equal(result.stage, 'Dentro do prazo')
 })
 
+test('limite de alerta pode ser configurado', () => {
+  const result = gestationDetails('2026-01-01', '2026-04-15', 10)
+  assert.equal(result.remaining, 10)
+  assert.equal(result.stage, 'Próximo ao parto')
+})
+
 test('total nascido soma todos os resultados', () => {
   assert.equal(totalBorn({ alive: 10, stillborn: 1, mummified: 2 }), 13)
 })

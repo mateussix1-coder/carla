@@ -55,6 +55,7 @@ export default function Matrizes() {
     matrizes,
     coberturas,
     partos,
+    settings,
     addMatriz,
     updateMatriz,
     archiveMatriz,
@@ -80,10 +81,10 @@ export default function Matrizes() {
         coverageCount: coverages.length,
         birthCount: partos.filter((item) => item.matrixId === matrix.id).length,
         latestCoverage: coverages[0],
-        gestation: activeCoverage ? gestationDetails(activeCoverage.date) : null,
+        gestation: activeCoverage ? gestationDetails(activeCoverage.date, undefined, settings.alertDays) : null,
       },
     ]
-  })), [matrizes, coberturas, partos])
+  })), [matrizes, coberturas, partos, settings.alertDays])
 
   const filtered = useMemo(
     () => matrizes.filter((matrix) => {
@@ -96,14 +97,14 @@ export default function Matrizes() {
   )
 
   const gestations = Object.values(matrixDetails).filter((item) => item.gestation)
-  const nearBirth = gestations.filter((item) => item.gestation.remaining >= 0 && item.gestation.remaining <= 7).length
+  const nearBirth = gestations.filter((item) => item.gestation.remaining >= 0 && item.gestation.remaining <= settings.alertDays).length
   const birthsThisMonth = partos
     .filter((birth) => birth.date >= startOfMonth())
     .reduce((sum, birth) => sum + Number(birth.alive), 0)
 
   function openCreate() {
     setEditingId('')
-    setForm(initialForm)
+    setForm({ ...initialForm, responsible: settings.teacherName })
     setError('')
     setOpen(true)
   }
@@ -153,7 +154,7 @@ export default function Matrizes() {
       <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard title="Matrizes ativas" value={matrizes.filter((item) => !item.archived).length} detail="no plantel" icon={PiggyBank} />
         <StatCard title="Em gestação" value={gestations.length} detail="cobertas ou prenhas" icon={HeartPulse} theme="sky" />
-        <StatCard title="Partos próximos" value={nearBirth} detail="próximos 7 dias" icon={CalendarClock} theme="amber" />
+        <StatCard title="Partos próximos" value={nearBirth} detail={`próximos ${settings.alertDays} dias`} icon={CalendarClock} theme="amber" />
         <StatCard title="Nascidos no mês" value={birthsThisMonth} detail="leitões vivos" icon={Baby} theme="violet" />
       </section>
 
@@ -205,7 +206,7 @@ export default function Matrizes() {
                       <div className={`mt-4 rounded-2xl border p-3 ${
                         gestation.remaining < 0
                           ? 'border-red-200 bg-red-50'
-                          : gestation.remaining <= 7
+                          : gestation.remaining <= settings.alertDays
                             ? 'border-amber-200 bg-amber-50'
                             : 'border-emerald-100 bg-emerald-50'
                       }`}>
@@ -266,7 +267,7 @@ export default function Matrizes() {
           <FormInput label="Peso aproximado (kg)" required type="number" min="1" step="0.1" value={form.weight} onChange={(e) => setForm({ ...form, weight: e.target.value })} />
           <FormSelect label="Status" required options={statuses} placeholder="" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} />
           <FormInput label="Origem" value={form.origin} onChange={(e) => setForm({ ...form, origin: e.target.value })} placeholder="Ex.: Fazenda experimental" />
-          <FormInput label="Responsável" value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} placeholder="Ex.: Profª Carla" />
+          <FormInput label="Responsável" value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} placeholder={`Ex.: ${settings.teacherName}`} />
           <FormInput label="Foto (URL opcional)" value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="/images/aurora.jpg" className="sm:col-span-2" />
           <label className="sm:col-span-2"><span className="field-label">Observações</span><textarea className="field-control min-h-28 py-3" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></label>
           {error && <p className="feedback-error sm:col-span-2">{error}</p>}
