@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, CheckCircle2, GraduationCap } from 'lucide-react
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import { ACCESS_MODULES, firstAllowedPath } from '../utils/access.js'
 
 const initialForm = {
   name: '',
@@ -12,14 +13,20 @@ const initialForm = {
 }
 
 export default function Cadastro() {
-  const { register } = useAuth()
+  const { register, user } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const inviteToken = searchParams.get('convite') || ''
-  const [form, setForm] = useState(initialForm)
+  const [form, setForm] = useState(() => ({
+    ...initialForm,
+    name: user?.name || '',
+    email: user?.email || '',
+    className: user?.className || '',
+  }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [invitedClass, setInvitedClass] = useState(null)
+  const [inviteDetails, setInviteDetails] = useState(null)
   const [inviteLoading, setInviteLoading] = useState(Boolean(inviteToken))
   const [pendingApproval, setPendingApproval] = useState(false)
 
@@ -30,7 +37,7 @@ export default function Cadastro() {
         const result = await response.json()
         if (!response.ok) throw new Error(result.error)
         setInvitedClass(result.class)
-        setForm((current) => ({ ...current, className: result.class.name }))
+        setInviteDetails(result)
       })
       .catch((requestError) => setError(requestError.message))
       .finally(() => setInviteLoading(false))
@@ -50,7 +57,7 @@ export default function Cadastro() {
       if (result.pendingApproval) {
         setPendingApproval(true)
       } else {
-        navigate('/aluno', { replace: true })
+        navigate(firstAllowedPath(result.user), { replace: true })
       }
     } catch (requestError) {
       setError(requestError.message)
@@ -73,13 +80,17 @@ export default function Cadastro() {
               {pendingApproval ? <CheckCircle2 size={25} /> : <GraduationCap size={25} />}
             </span>
             <h1 className="mt-5 text-3xl font-bold">
-              {pendingApproval ? 'Solicitação enviada' : 'Criar acesso de aluno'}
+              {pendingApproval
+                ? 'Solicitação enviada'
+                : inviteDetails?.role === 'monitor'
+                  ? 'Ativar acesso de monitor'
+                  : 'Criar ou ampliar acesso'}
             </h1>
             <p className="mt-2 max-w-md text-sm leading-6 text-white/65">
               {pendingApproval
                 ? 'A professora recebeu seus dados e precisa aprovar o primeiro acesso.'
                 : invitedClass
-                  ? `Você está solicitando entrada em ${invitedClass.name}.`
+                  ? `Este convite libera ${inviteDetails?.classes?.length || 1} turma(s) na mesma conta.`
                   : 'Use seus dados reais. Suas publicações e atividades ficarão vinculadas ao seu perfil acadêmico.'}
             </p>
           </header>
@@ -102,9 +113,22 @@ export default function Cadastro() {
             <form onSubmit={submit} className="space-y-4 p-6 sm:p-8">
               {invitedClass && (
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Convite válido</span>
-                  <strong className="mt-1 block text-sm text-[#073f2b]">{invitedClass.name}</strong>
-                  <span className="mt-1 block text-xs text-slate-500">{invitedClass.code}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                    Convite válido · {inviteDetails?.role === 'monitor' ? 'Monitor' : 'Aluno'}
+                  </span>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {(inviteDetails?.classes || [invitedClass]).map((item) => (
+                      <span key={item.id} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#073f2b]">
+                        {item.name}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    Partes liberadas: {(inviteDetails?.modules || ['academic'])
+                      .map((key) => ACCESS_MODULES.find((item) => item.key === key)?.label)
+                      .filter(Boolean)
+                      .join(', ')}.
+                  </p>
                 </div>
               )}
 
@@ -124,13 +148,12 @@ export default function Cadastro() {
                   value={form.className}
                   onChange={(event) => setForm({ ...form, className: event.target.value })}
                   placeholder="Ex.: Zootecnia A"
-                  disabled={Boolean(invitedClass)}
                 />
               </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label>
                   <span className="field-label">Senha</span>
-                  <input required minLength="8" type="password" autoComplete="new-password" className="field-control" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
+                  <input required minLength="8" type="password" autoComplete={user ? 'current-password' : 'new-password'} className="field-control" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
                 </label>
                 <label>
                   <span className="field-label">Confirmar senha</span>
@@ -142,7 +165,7 @@ export default function Cadastro() {
                 {[
                   'A professora acompanha sua participação',
                   'Seus indicadores são privados',
-                  invitedClass ? 'O acesso só será liberado após aprovação' : 'Sua sessão fica salva neste aparelho',
+                  invitedClass ? 'Se o e-mail já existir, a mesma conta receberá os novos acessos' : 'Sua sessão fica salva neste aparelho',
                 ].map((item) => (
                   <p key={item} className="flex items-center gap-2 py-1 text-xs text-[#335b47]">
                     <CheckCircle2 size={15} className="text-[#1b6a41]" />
@@ -160,7 +183,7 @@ export default function Cadastro() {
                 {busy
                   ? 'Enviando solicitação...'
                   : invitedClass
-                    ? 'Solicitar entrada na turma'
+                    ? 'Aceitar convite nesta conta'
                     : 'Criar minha conta'}
                 {!busy && <ArrowRight size={17} />}
               </button>

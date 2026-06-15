@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useAppData } from '../context/AppDataContext.jsx'
 import { mediaUrl } from '../utils/api.js'
+import { ACCESS_MODULES } from '../utils/access.js'
 
 export default function AlunoDashboard() {
   const { user } = useAuth()
@@ -18,6 +19,9 @@ export default function AlunoDashboard() {
   const ownPosts = feedPosts.filter((post) => post.authorId === user.id)
   const recognition = ownPosts.reduce((sum, post) => sum + post.likes.length, 0)
   const avatar = mediaUrl(user.avatarPath)
+  const allowedModules = ACCESS_MODULES.filter((item) => (
+    item.key !== 'academic' && user.accessModules?.includes(item.key)
+  ))
 
   return (
     <div className="page-shell">
@@ -32,7 +36,7 @@ export default function AlunoDashboard() {
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#edcb7c]">
-              Portal do aluno
+              {user.membershipRole === 'monitor' ? 'Portal do monitor' : 'Portal do aluno'}
             </p>
             <h1 className="mt-2 text-3xl font-bold">Olá, {user.name.split(' ')[0]}</h1>
             <p className="mt-2 text-sm text-white/65">
@@ -60,6 +64,21 @@ export default function AlunoDashboard() {
           </article>
         ))}
       </section>
+
+      {allowedModules.length > 0 && (
+        <section className="surface-card mt-5 p-5 sm:p-6">
+          <h2 className="section-title">Partes liberadas para você</h2>
+          <p className="mt-1 text-xs text-slate-500">Os cadastros existentes ficam disponíveis somente para consulta.</p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {allowedModules.map((item) => (
+              <Link key={item.key} to={item.path} className="flex min-h-12 items-center justify-between rounded-xl border border-[#e3ded3] bg-white px-4 text-sm font-semibold text-[#073f2b]">
+                {item.label}
+                <ArrowRight size={16} className="text-[#ad7b22]" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-5 grid gap-5 lg:grid-cols-[1fr_0.8fr]">
         <article className="surface-card overflow-hidden">

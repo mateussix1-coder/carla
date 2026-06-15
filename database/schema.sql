@@ -136,11 +136,21 @@ CREATE TABLE IF NOT EXISTS class_invitations (
   id TEXT PRIMARY KEY,
   class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
   token TEXT NOT NULL UNIQUE,
+  role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'monitor')),
+  class_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  module_access JSONB NOT NULL DEFAULT '["academic"]'::jsonb,
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_by TEXT NOT NULL REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ
 );
+
+ALTER TABLE class_invitations ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'student';
+ALTER TABLE class_invitations ADD COLUMN IF NOT EXISTS class_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE class_invitations ADD COLUMN IF NOT EXISTS module_access JSONB NOT NULL DEFAULT '["academic"]'::jsonb;
+ALTER TABLE class_invitations DROP CONSTRAINT IF EXISTS class_invitations_role_check;
+ALTER TABLE class_invitations ADD CONSTRAINT class_invitations_role_check
+  CHECK (role IN ('student', 'monitor'));
 
 CREATE INDEX IF NOT EXISTS class_invitations_token_idx
   ON class_invitations(token);
@@ -149,6 +159,7 @@ CREATE TABLE IF NOT EXISTS class_memberships (
   class_id TEXT NOT NULL REFERENCES classes(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'monitor', 'teacher')),
+  module_access JSONB NOT NULL DEFAULT '["academic"]'::jsonb,
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'blocked', 'removed', 'rejected')),
   progress INTEGER NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
   requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -157,8 +168,78 @@ CREATE TABLE IF NOT EXISTS class_memberships (
   PRIMARY KEY (class_id, user_id)
 );
 
+ALTER TABLE class_memberships ADD COLUMN IF NOT EXISTS module_access JSONB NOT NULL DEFAULT '["academic"]'::jsonb;
+
 CREATE INDEX IF NOT EXISTS class_memberships_user_idx
   ON class_memberships(user_id, status);
+
+UPDATE class_memberships
+SET module_access = '[
+  "academic",
+  "matrizes",
+  "gestacao",
+  "partos",
+  "leitoes",
+  "varroes",
+  "coberturas",
+  "sanitario",
+  "relatorios"
+]'::jsonb
+WHERE role = 'monitor';
+
+INSERT INTO class_memberships (
+  class_id,
+  user_id,
+  role,
+  module_access,
+  status,
+  progress,
+  approved_at
+)
+SELECT
+  c.id,
+  monitor.user_id,
+  'monitor',
+  '[
+    "academic",
+    "matrizes",
+    "gestacao",
+    "partos",
+    "leitoes",
+    "varroes",
+    "coberturas",
+    "sanitario",
+    "relatorios"
+  ]'::jsonb,
+  'active',
+  0,
+  NOW()
+FROM classes c
+CROSS JOIN (
+  SELECT DISTINCT u.id AS user_id
+  FROM users u
+  WHERE
+    u.role = 'student'
+    AND u.status = 'active'
+    AND (
+      LOWER(TRIM(u.responsibility)) = 'monitor'
+      OR EXISTS (
+        SELECT 1
+        FROM class_memberships existing_membership
+        WHERE
+          existing_membership.user_id = u.id
+          AND existing_membership.role = 'monitor'
+          AND existing_membership.status = 'active'
+      )
+    )
+) AS monitor
+WHERE c.status = 'active'
+ON CONFLICT (class_id, user_id) DO UPDATE SET
+  role = 'monitor',
+  module_access = EXCLUDED.module_access,
+  status = 'active',
+  approved_at = COALESCE(class_memberships.approved_at, NOW()),
+  updated_at = NOW();
 
 CREATE TABLE IF NOT EXISTS class_activities (
   id TEXT PRIMARY KEY,

@@ -9,6 +9,7 @@ import {
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import { firstAllowedPath } from '../utils/access.js'
 
 export default function Entrar() {
   const {
@@ -30,7 +31,7 @@ export default function Entrar() {
     try {
       const user = await login(credentials)
       const teacherDestination = destination === '/aluno' ? '/' : destination
-      navigate(user.role === 'teacher' ? teacherDestination : '/aluno', { replace: true })
+      navigate(user.role === 'teacher' ? teacherDestination : firstAllowedPath(user), { replace: true })
     } catch (requestError) {
       setError(requestError.message)
     } finally {

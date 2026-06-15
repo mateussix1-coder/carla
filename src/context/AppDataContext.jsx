@@ -333,6 +333,10 @@ export function AppDataProvider({ children }) {
   }
 
   function updateOperationalState(recipe, message) {
+    if (user?.role !== 'teacher') {
+      notify('Seu acesso a este módulo é somente para consulta. Os cadastros atuais não foram alterados.')
+      return dataRef.current
+    }
     const next = normalizeState(recipe(dataRef.current))
     dataRef.current = next
     setData(next)

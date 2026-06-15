@@ -1,5 +1,4 @@
 import {
-  Activity,
   Baby,
   BarChart3,
   Bell,
@@ -28,6 +27,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAppData } from '../context/AppDataContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { mediaUrl } from '../utils/api.js'
+import { hasModuleAccess } from '../utils/access.js'
 
 const teacherGroups = [
   {
@@ -72,19 +72,43 @@ const teacherGroups = [
   },
 ]
 
-const studentGroups = [
-  {
-    label: 'Portal do aluno',
-    items: [
-      { to: '/aluno', label: 'Início', icon: Home },
-      { to: '/turmas', label: 'Minhas turmas', icon: GraduationCap },
-      { to: '/atividades', label: 'Atividades', icon: BookOpenCheck },
-      { to: '/agenda', label: 'Agenda', icon: CalendarDays },
-      { to: '/rede', label: 'Mural', icon: MessageCircleMore },
-      { to: '/perfil', label: 'Meu perfil', icon: UserRound },
-    ],
-  },
-]
+function studentGroups(user) {
+  const groups = []
+  if (hasModuleAccess(user, 'academic')) {
+    groups.push({
+      label: user.membershipRole === 'monitor' ? 'Portal do monitor' : 'Portal do aluno',
+      items: [
+        { to: '/aluno', label: 'Início', icon: Home },
+        { to: '/turmas', label: 'Minhas turmas', icon: GraduationCap },
+        { to: '/atividades', label: 'Atividades', icon: BookOpenCheck },
+        { to: '/agenda', label: 'Agenda', icon: CalendarDays },
+        { to: '/rede', label: 'Mural', icon: MessageCircleMore },
+      ],
+    })
+  }
+
+  const managementItems = [
+    ['matrizes', '/matrizes', 'Matrizes', PiggyBank],
+    ['gestacao', '/gestacao', 'Gestação', HeartPulse],
+    ['partos', '/partos', 'Partos', Stethoscope],
+    ['leitoes', '/leitoes', 'Leitões', Baby],
+    ['varroes', '/varroes', 'Varrões', Users],
+    ['coberturas', '/coberturas', 'Coberturas', ClipboardPlus],
+    ['sanitario', '/sanitario', 'Sanitário', ShieldPlus],
+    ['relatorios', '/relatorios', 'Relatórios', BarChart3],
+  ]
+    .filter(([moduleKey]) => hasModuleAccess(user, moduleKey))
+    .map(([, to, label, icon]) => ({ to, label, icon }))
+
+  if (managementItems.length) {
+    groups.push({ label: 'Manejo autorizado', items: managementItems })
+  }
+  groups.push({
+    label: 'Conta',
+    items: [{ to: '/perfil', label: 'Meu perfil', icon: UserRound }],
+  })
+  return groups
+}
 
 const pageTitles = {
   '/': 'Visão geral',
@@ -188,7 +212,11 @@ function DesktopSidebar({ groups }) {
           <div className="min-w-0 flex-1">
             <strong className="block truncate text-sm">{user.name}</strong>
             <span className="mt-0.5 block truncate text-[10px] text-white/50">
-              {user.role === 'teacher' ? 'Professora responsável' : user.className}
+              {user.role === 'teacher'
+                ? 'Professora responsável'
+                : user.membershipRole === 'monitor'
+                  ? `Monitor · ${user.className}`
+                  : user.className}
             </span>
           </div>
         </div>
@@ -232,7 +260,9 @@ function DesktopHeader() {
           <UserAvatar user={user} size="h-8 w-8" />
           <div>
             <strong className="block text-xs text-[#073f2b]">{user.name}</strong>
-            <span className="block text-[9px] text-slate-400">{user.role === 'teacher' ? 'Professora' : 'Aluno'}</span>
+            <span className="block text-[9px] text-slate-400">
+              {user.role === 'teacher' ? 'Professora' : user.membershipRole === 'monitor' ? 'Monitor' : 'Aluno'}
+            </span>
           </div>
         </div>
       </div>
@@ -250,7 +280,11 @@ function MobileHeader() {
         <div>
           <strong className="display-serif block text-lg font-normal leading-none">{settings.systemName}</strong>
           <span className="text-[8px] uppercase tracking-[0.18em] text-white/55">
-            {user.role === 'teacher' ? 'Gestão zootécnica' : 'Portal do aluno'}
+            {user.role === 'teacher'
+              ? 'Gestão zootécnica'
+              : user.membershipRole === 'monitor'
+                ? 'Portal do monitor'
+                : 'Portal do aluno'}
           </span>
         </div>
       </div>
@@ -265,7 +299,7 @@ function MobileHeader() {
   )
 }
 
-function MobileBottomNav({ teacher, onMore }) {
+function MobileBottomNav({ teacher, groups, onMore }) {
   const main = teacher
     ? [
         { to: '/', label: 'Início', icon: Home },
@@ -273,12 +307,10 @@ function MobileBottomNav({ teacher, onMore }) {
         { to: '/gestacao', label: 'Gestação', icon: HeartPulse },
         { to: '/partos', label: 'Partos', icon: Stethoscope },
       ]
-    : [
-        { to: '/aluno', label: 'Início', icon: Home },
-        { to: '/turmas', label: 'Turmas', icon: GraduationCap },
-        { to: '/rede', label: 'Mural', icon: Activity },
-        { to: '/agenda', label: 'Agenda', icon: Bell },
-      ]
+    : groups
+        .flatMap((group) => group.items)
+        .filter((item) => item.to !== '/perfil')
+        .slice(0, 4)
   const location = useLocation()
   const mainActive = main.some((item) => (
     item.to === '/' || item.to === '/aluno'
@@ -371,7 +403,10 @@ export default function AppLayout() {
   const location = useLocation()
   const [moreOpen, setMoreOpen] = useState(false)
   const teacher = user.role === 'teacher'
-  const groups = useMemo(() => (teacher ? teacherGroups : studentGroups), [teacher])
+  const groups = useMemo(
+    () => (teacher ? teacherGroups : studentGroups(user)),
+    [teacher, user.accessModules, user.membershipRole],
+  )
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -393,7 +428,7 @@ export default function AppLayout() {
           <Outlet />
         </main>
       </div>
-      <MobileBottomNav teacher={teacher} onMore={() => setMoreOpen(true)} />
+      <MobileBottomNav teacher={teacher} groups={groups} onMore={() => setMoreOpen(true)} />
       <MoreMenu open={moreOpen} groups={groups} teacher={teacher} onClose={() => setMoreOpen(false)} />
     </div>
   )

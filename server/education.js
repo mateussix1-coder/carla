@@ -7,6 +7,10 @@ import {
   rejectMethod,
   sendJson,
 } from './_lib/http.js'
+import {
+  ACCESS_MODULES,
+  accessModulesForRole,
+} from '../src/utils/access.js'
 
 function classDto(row) {
   return {
@@ -34,6 +38,10 @@ function membershipDto(row) {
     ...publicUser(row, true),
     membershipRole: row.membership_role || 'student',
     membershipStatus: row.membership_status || 'pending',
+    accessModules: accessModulesForRole(
+      row.module_access,
+      row.membership_role || 'student',
+    ),
     progress: Number(row.progress || 0),
     requestedAt: row.requested_at,
     approvedAt: row.approved_at,
@@ -54,7 +62,10 @@ async function listClasses(sql, user) {
           (
             SELECT token
             FROM class_invitations ci
-            WHERE ci.class_id = c.id AND ci.active = TRUE
+            WHERE
+              ci.class_id = c.id
+              AND ci.active = TRUE
+              AND jsonb_array_length(ci.class_ids) <= 1
             ORDER BY ci.created_at DESC
             LIMIT 1
           ) AS invite_token
@@ -111,7 +122,10 @@ async function classDetail(sql, classId, user) {
       (
         SELECT token
         FROM class_invitations ci
-        WHERE ci.class_id = c.id AND ci.active = TRUE
+        WHERE
+          ci.class_id = c.id
+          AND ci.active = TRUE
+          AND jsonb_array_length(ci.class_ids) <= 1
         ORDER BY ci.created_at DESC
         LIMIT 1
       ) AS invite_token
@@ -130,6 +144,7 @@ async function classDetail(sql, classId, user) {
           SELECT
             u.*,
             cm.role AS membership_role,
+            cm.module_access,
             cm.status AS membership_status,
             cm.progress,
             cm.requested_at,
@@ -150,6 +165,7 @@ async function classDetail(sql, classId, user) {
           SELECT
             u.*,
             cm.role AS membership_role,
+            cm.module_access,
             cm.status AS membership_status,
             cm.progress,
             cm.requested_at,
@@ -212,6 +228,30 @@ async function audit(sql, userId, eventType, entityType, entityId, metadata = {}
   `
 }
 
+async function syncUserStatus(sql, userId) {
+  const membershipRows = await sql`
+    SELECT
+      BOOL_OR(status = 'active') AS has_active,
+      BOOL_OR(status = 'pending') AS has_pending
+    FROM class_memberships
+    WHERE user_id = ${userId}
+  `
+  const status = membershipRows[0]?.has_active
+    ? 'active'
+    : membershipRows[0]?.has_pending
+      ? 'pending'
+      : 'archived'
+  await sql`
+    UPDATE users
+    SET status = ${status}, updated_at = NOW()
+    WHERE id = ${userId} AND role = 'student'
+  `
+  if (status !== 'active') {
+    await sql`DELETE FROM sessions WHERE user_id = ${userId}`
+  }
+  return status
+}
+
 export default async function handler(request, response) {
   const path = String(request.query.educationPath || '').replace(/^\/+|\/+$/g, '')
   const sql = getSql()
@@ -219,7 +259,12 @@ export default async function handler(request, response) {
   const inviteMatch = path.match(/^invite\/([^/]+)$/)
   if (inviteMatch && request.method === 'GET') {
     const rows = await sql`
-      SELECT c.id, c.name, c.code, c.description, c.status, ci.expires_at
+      SELECT
+        ci.class_id,
+        ci.class_ids,
+        ci.role,
+        ci.module_access,
+        ci.expires_at
       FROM class_invitations ci
       JOIN classes c ON c.id = ci.class_id
       WHERE
@@ -231,13 +276,27 @@ export default async function handler(request, response) {
       LIMIT 1
     `
     if (!rows[0]) return sendJson(response, 404, { error: 'Este convite não está mais disponível.' })
+    const invitation = rows[0]
+    const classIds = [...new Set([
+      ...(Array.isArray(invitation.class_ids) ? invitation.class_ids : []),
+      invitation.class_id,
+    ].filter(Boolean))]
+    const classes = await sql`
+      SELECT id, name, code, description
+      FROM classes
+      WHERE id = ANY(${classIds}::text[]) AND status = 'active'
+      ORDER BY created_at ASC
+    `
+    if (classes.length !== classIds.length) {
+      return sendJson(response, 404, { error: 'Este convite não está mais disponível.' })
+    }
+    const role = invitation.role === 'monitor' ? 'monitor' : 'student'
     return sendJson(response, 200, {
-      class: {
-        id: rows[0].id,
-        name: rows[0].name,
-        code: rows[0].code,
-        description: rows[0].description,
-      },
+      class: classes[0],
+      classes,
+      role,
+      modules: accessModulesForRole(invitation.module_access, role),
+      moduleOptions: ACCESS_MODULES,
     })
   }
 
@@ -305,6 +364,7 @@ export default async function handler(request, response) {
         c.name AS class_name,
         c.code AS class_code,
         cm.role AS membership_role,
+        cm.module_access,
         cm.status AS membership_status,
         cm.progress,
         cm.requested_at,
@@ -409,6 +469,60 @@ export default async function handler(request, response) {
     })
   }
 
+  if (path === 'invites' && request.method === 'POST') {
+    if (!teacher) return sendJson(response, 403, { error: 'Apenas a professora pode gerar convites.' })
+    const body = readBody(request)
+    const role = body.role === 'monitor' ? 'monitor' : 'student'
+    const requestedClassIds = Array.isArray(body.classIds)
+      ? [...new Set(body.classIds.map((item) => cleanText(item, 120)).filter(Boolean))]
+      : []
+    if (!requestedClassIds.length) {
+      return sendJson(response, 400, { error: 'Selecione pelo menos uma turma.' })
+    }
+    const classes = await sql`
+      SELECT id, name, code
+      FROM classes
+      WHERE id = ANY(${requestedClassIds}::text[]) AND status = 'active'
+      ORDER BY created_at ASC
+    `
+    if (classes.length !== requestedClassIds.length) {
+      return sendJson(response, 400, { error: 'Uma das turmas selecionadas não está disponível.' })
+    }
+    const modules = accessModulesForRole(body.modules, role)
+    const token = randomUUID()
+    await sql`
+      INSERT INTO class_invitations (
+        id,
+        class_id,
+        token,
+        role,
+        class_ids,
+        module_access,
+        created_by
+      )
+      VALUES (
+        ${randomUUID()},
+        ${classes[0].id},
+        ${token},
+        ${role},
+        ${JSON.stringify(classes.map((item) => item.id))}::jsonb,
+        ${JSON.stringify(modules)}::jsonb,
+        ${session.user.id}
+      )
+    `
+    await audit(sql, session.user.id, 'access_invite_created', 'class_invitation', token, {
+      role,
+      classIds: classes.map((item) => item.id),
+      modules,
+    })
+    return sendJson(response, 201, {
+      token,
+      role,
+      classes,
+      modules,
+    })
+  }
+
   if (path === 'classes' && request.method === 'POST') {
     if (!teacher) return sendJson(response, 403, { error: 'Apenas a professora pode criar turmas.' })
     const body = readBody(request)
@@ -430,8 +544,64 @@ export default async function handler(request, response) {
       VALUES (${classId}, ${name}, ${code}, ${description}, ${session.user.id}, ${color})
     `
     await sql`
-      INSERT INTO class_invitations (id, class_id, token, created_by)
-      VALUES (${randomUUID()}, ${classId}, ${token}, ${session.user.id})
+      INSERT INTO class_invitations (
+        id,
+        class_id,
+        token,
+        role,
+        class_ids,
+        module_access,
+        created_by
+      )
+      VALUES (
+        ${randomUUID()},
+        ${classId},
+        ${token},
+        'student',
+        ${JSON.stringify([classId])}::jsonb,
+        '["academic"]'::jsonb,
+        ${session.user.id}
+      )
+    `
+    await sql`
+      INSERT INTO class_memberships (
+        class_id,
+        user_id,
+        role,
+        module_access,
+        status,
+        progress,
+        approved_at
+      )
+      SELECT
+        ${classId},
+        u.id,
+        'monitor',
+        ${JSON.stringify(ACCESS_MODULES.map((item) => item.key))}::jsonb,
+        'active',
+        0,
+        NOW()
+      FROM users u
+      WHERE
+        u.role = 'student'
+        AND u.status = 'active'
+        AND (
+          LOWER(TRIM(u.responsibility)) = 'monitor'
+          OR EXISTS (
+            SELECT 1
+            FROM class_memberships existing_membership
+            WHERE
+              existing_membership.user_id = u.id
+              AND existing_membership.role = 'monitor'
+              AND existing_membership.status = 'active'
+          )
+        )
+      ON CONFLICT (class_id, user_id) DO UPDATE SET
+        role = 'monitor',
+        module_access = EXCLUDED.module_access,
+        status = 'active',
+        approved_at = COALESCE(class_memberships.approved_at, NOW()),
+        updated_at = NOW()
     `
     await audit(sql, session.user.id, 'class_created', 'class', classId, { code })
     const detail = await classDetail(sql, classId, session.user)
@@ -488,10 +658,30 @@ export default async function handler(request, response) {
     const exists = await sql`SELECT id FROM classes WHERE id = ${classId} LIMIT 1`
     if (!exists[0]) return sendJson(response, 404, { error: 'Turma não encontrada.' })
     const token = randomUUID()
-    await sql`UPDATE class_invitations SET active = FALSE WHERE class_id = ${classId}`
     await sql`
-      INSERT INTO class_invitations (id, class_id, token, created_by)
-      VALUES (${randomUUID()}, ${classId}, ${token}, ${session.user.id})
+      UPDATE class_invitations
+      SET active = FALSE
+      WHERE class_id = ${classId} AND jsonb_array_length(class_ids) <= 1
+    `
+    await sql`
+      INSERT INTO class_invitations (
+        id,
+        class_id,
+        token,
+        role,
+        class_ids,
+        module_access,
+        created_by
+      )
+      VALUES (
+        ${randomUUID()},
+        ${classId},
+        ${token},
+        'student',
+        ${JSON.stringify([classId])}::jsonb,
+        '["academic"]'::jsonb,
+        ${session.user.id}
+      )
     `
     await audit(sql, session.user.id, 'class_invite_regenerated', 'class', classId)
     return sendJson(response, 201, { token })
@@ -520,6 +710,19 @@ export default async function handler(request, response) {
         WHERE class_id = ${classId} AND user_id = ${userId}
       `
       await audit(sql, session.user.id, 'membership_role_updated', 'user', userId, { classId, role })
+    } else if (action === 'access') {
+      const modules = accessModulesForRole(body.modules, role)
+      const rows = await sql`
+        UPDATE class_memberships
+        SET module_access = ${JSON.stringify(modules)}::jsonb, updated_at = NOW()
+        WHERE class_id = ${classId} AND user_id = ${userId}
+        RETURNING user_id
+      `
+      if (!rows[0]) return sendJson(response, 404, { error: 'Matrícula não encontrada.' })
+      await audit(sql, session.user.id, 'membership_access_updated', 'user', userId, {
+        classId,
+        modules,
+      })
     } else if (statusByAction[action]) {
       const membershipStatus = statusByAction[action]
       const rows = await sql`
@@ -533,21 +736,7 @@ export default async function handler(request, response) {
       `
       if (!rows[0]) return sendJson(response, 404, { error: 'Matrícula não encontrada.' })
 
-      const userStatus = action === 'approve' || action === 'reactivate'
-        ? 'active'
-        : action === 'block'
-          ? 'blocked'
-          : action === 'remove' || action === 'reject'
-            ? 'archived'
-            : 'pending'
-      await sql`
-        UPDATE users
-        SET status = ${userStatus}, updated_at = NOW()
-        WHERE id = ${userId} AND role = 'student'
-      `
-      if (['block', 'remove', 'reject'].includes(action)) {
-        await sql`DELETE FROM sessions WHERE user_id = ${userId}`
-      }
+      await syncUserStatus(sql, userId)
       await audit(sql, session.user.id, `membership_${action}`, 'user', userId, { classId })
     } else {
       return sendJson(response, 400, { error: 'Ação de aluno inválida.' })

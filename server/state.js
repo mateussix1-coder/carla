@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { requireUser } from './_lib/auth.js'
 import { getSql } from './_lib/db.js'
 import { readBody, rejectMethod, sendJson } from './_lib/http.js'
+import { hasModuleAccess } from '../src/utils/access.js'
 
 function statePayload(data) {
   const {
@@ -29,15 +30,41 @@ export default async function handler(request, response) {
     if (!state) return sendJson(response, 404, { error: 'Base operacional não encontrada.' })
 
     const data = statePayload(state.data)
+    const canAccess = (moduleKey) => hasModuleAccess(session.user, moduleKey)
     const scopedData = session.user.role === 'teacher'
       ? data
       : {
-          matrizes: data.matrizes || [],
-          lotes: data.lotes || [],
-          coberturas: [],
-          partos: [],
-          varroes: [],
-          sanitario: [],
+          matrizes: (
+            canAccess('matrizes')
+            || canAccess('gestacao')
+            || canAccess('partos')
+            || canAccess('coberturas')
+            || canAccess('relatorios')
+          ) ? data.matrizes || [] : [],
+          lotes: (
+            canAccess('leitoes')
+            || canAccess('sanitario')
+            || canAccess('relatorios')
+          ) ? data.lotes || [] : [],
+          coberturas: (
+            canAccess('gestacao')
+            || canAccess('partos')
+            || canAccess('coberturas')
+          ) ? data.coberturas || [] : [],
+          partos: (
+            canAccess('partos')
+            || canAccess('leitoes')
+            || canAccess('relatorios')
+          ) ? data.partos || [] : [],
+          varroes: (
+            canAccess('varroes')
+            || canAccess('coberturas')
+          ) ? data.varroes || [] : [],
+          sanitario: (
+            canAccess('sanitario')
+            || canAccess('gestacao')
+            || canAccess('relatorios')
+          ) ? data.sanitario || [] : [],
           settings: data.settings || {},
           permissions: data.permissions || {},
         }

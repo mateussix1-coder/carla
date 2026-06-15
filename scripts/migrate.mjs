@@ -152,6 +152,78 @@ for (const [index, student] of seed.alunos.entries()) {
   `
 }
 
+await sql`
+  UPDATE class_memberships
+  SET module_access = '[
+    "academic",
+    "matrizes",
+    "gestacao",
+    "partos",
+    "leitoes",
+    "varroes",
+    "coberturas",
+    "sanitario",
+    "relatorios"
+  ]'::jsonb
+  WHERE role = 'monitor'
+`
+
+await sql`
+  INSERT INTO class_memberships (
+    class_id,
+    user_id,
+    role,
+    module_access,
+    status,
+    progress,
+    approved_at
+  )
+  SELECT
+    c.id,
+    monitor.user_id,
+    'monitor',
+    '[
+      "academic",
+      "matrizes",
+      "gestacao",
+      "partos",
+      "leitoes",
+      "varroes",
+      "coberturas",
+      "sanitario",
+      "relatorios"
+    ]'::jsonb,
+    'active',
+    0,
+    NOW()
+  FROM classes c
+  CROSS JOIN (
+    SELECT DISTINCT u.id AS user_id
+    FROM users u
+    WHERE
+      u.role = 'student'
+      AND u.status = 'active'
+      AND (
+        LOWER(TRIM(u.responsibility)) = 'monitor'
+        OR EXISTS (
+          SELECT 1
+          FROM class_memberships existing_membership
+          WHERE
+            existing_membership.user_id = u.id
+            AND existing_membership.role = 'monitor'
+            AND existing_membership.status = 'active'
+        )
+      )
+  ) AS monitor
+  WHERE c.status = 'active'
+  ON CONFLICT (class_id, user_id) DO UPDATE SET
+    role = 'monitor',
+    module_access = EXCLUDED.module_access,
+    status = 'active',
+    approved_at = COALESCE(class_memberships.approved_at, NOW()),
+    updated_at = NOW()
+`
+
 for (const [index, classId] of classIds.entries()) {
   await sql`
     INSERT INTO class_invitations (

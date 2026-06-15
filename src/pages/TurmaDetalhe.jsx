@@ -34,6 +34,7 @@ import Modal from '../components/Modal.jsx'
 import { useAppData } from '../context/AppDataContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { mediaUrl } from '../utils/api.js'
+import { ACCESS_MODULES } from '../utils/access.js'
 
 const tabItems = [
   { value: 'wall', label: 'Mural', icon: MessageCircleMore },
@@ -103,6 +104,8 @@ export default function TurmaDetalhe() {
   const [qrOpen, setQrOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
   const [eventOpen, setEventOpen] = useState(false)
+  const [accessMember, setAccessMember] = useState(null)
+  const [accessDraft, setAccessDraft] = useState([])
   const [announcement, setAnnouncement] = useState('')
   const [activityForm, setActivityForm] = useState({ title: '', description: '', dueAt: '' })
   const [eventForm, setEventForm] = useState({ title: '', type: 'class', startsAt: '', location: '', notes: '' })
@@ -178,12 +181,12 @@ export default function TurmaDetalhe() {
     setQrOpen(true)
   }
 
-  async function memberAction(member, action, role) {
+  async function memberAction(member, action, role, modules) {
     setBusy(`${member.id}-${action}`)
     try {
       const next = await apiRequest(`/api/education/classes/${id}/members/${member.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ action, role }),
+        body: JSON.stringify({ action, role, modules }),
       })
       setDetail(next)
       await refreshEducation()
@@ -194,6 +197,7 @@ export default function TurmaDetalhe() {
         reactivate: 'Acesso do aluno reativado.',
         remove: 'Aluno removido. O histórico foi preservado.',
         role: 'Papel do aluno atualizado.',
+        access: 'Partes do sistema atualizadas.',
       }
       notify(messages[action])
     } catch (requestError) {
@@ -201,7 +205,19 @@ export default function TurmaDetalhe() {
     } finally {
       setBusy('')
       setConfirmAction(null)
+      if (action === 'access') setAccessMember(null)
     }
+  }
+
+  function openMemberAccess(member) {
+    setAccessMember(member)
+    setAccessDraft(member.accessModules || ['academic'])
+  }
+
+  function toggleAccessModule(moduleKey) {
+    setAccessDraft((current) => current.includes(moduleKey)
+      ? current.filter((item) => item !== moduleKey)
+      : [...current, moduleKey])
   }
 
   async function updateSetting(key, value) {
@@ -566,6 +582,13 @@ export default function TurmaDetalhe() {
                               </select>
                               <button
                                 type="button"
+                                className="action-button"
+                                onClick={() => openMemberAccess(member)}
+                              >
+                                <Settings2 size={16} /> Acessos
+                              </button>
+                              <button
+                                type="button"
                                 className="action-button action-warning"
                                 onClick={() => setConfirmAction({ member, action: 'block' })}
                               >
@@ -768,6 +791,46 @@ export default function TurmaDetalhe() {
             <button className="primary-button" disabled={busy === 'event'}>{busy === 'event' ? 'Salvando...' : 'Adicionar à agenda'}</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(accessMember)}
+        onClose={() => setAccessMember(null)}
+        title={`Partes liberadas para ${accessMember?.name || ''}`}
+        subtitle="A alteração vale para esta matrícula e preserva os outros vínculos da pessoa"
+        size="max-w-2xl"
+      >
+        {accessMember && (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault()
+              memberAction(
+                accessMember,
+                'access',
+                accessMember.membershipRole,
+                accessDraft,
+              )
+            }}
+          >
+            <div className="grid gap-2 sm:grid-cols-2">
+              {ACCESS_MODULES.map((item) => (
+                <label key={item.key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-[#e3ded3] bg-white p-3">
+                  <input
+                    type="checkbox"
+                    checked={accessDraft.includes(item.key)}
+                    onChange={() => toggleAccessModule(item.key)}
+                    className="h-5 w-5 accent-[#0b6847]"
+                  />
+                  <span className="text-xs font-semibold text-slate-600">{item.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="modal-actions mt-5">
+              <button type="button" className="secondary-button" onClick={() => setAccessMember(null)}>Cancelar</button>
+              <button className="primary-button" disabled={!accessDraft.length || busy !== ''}>Salvar acessos</button>
+            </div>
+          </form>
+        )}
       </Modal>
 
       <Modal

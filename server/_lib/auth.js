@@ -5,6 +5,10 @@ import {
   scryptSync,
   timingSafeEqual,
 } from 'node:crypto'
+import {
+  ACCESS_MODULE_KEYS,
+  accessModulesForRole,
+} from '../../src/utils/access.js'
 import { getSql } from './db.js'
 import { isSameOrigin, parseCookies, sendJson } from './http.js'
 
@@ -31,6 +35,9 @@ export function verifyPassword(password, stored) {
 
 export function publicUser(user, includePrivate = false) {
   if (!user) return null
+  const membershipRole = user.role === 'teacher'
+    ? 'teacher'
+    : user.membership_role || 'student'
   const result = {
     id: user.id,
     name: user.name,
@@ -42,11 +49,49 @@ export function publicUser(user, includePrivate = false) {
     avatarPath: user.avatar_path || '',
     status: user.status,
     setupComplete: Boolean(user.setup_complete),
+    membershipRole,
+    accessModules: user.role === 'teacher'
+      ? [...ACCESS_MODULE_KEYS]
+      : accessModulesForRole(user.access_modules, membershipRole),
+    classIds: Array.isArray(user.class_ids) ? user.class_ids : [],
     createdAt: user.created_at,
     lastLoginAt: user.last_login_at,
   }
   if (includePrivate) result.privateNotes = user.private_notes || ''
   return result
+}
+
+export async function hydrateUserAccess(user) {
+  if (!user) return null
+  if (user.role === 'teacher') {
+    return {
+      ...user,
+      membership_role: 'teacher',
+      access_modules: [...ACCESS_MODULE_KEYS],
+      class_ids: [],
+    }
+  }
+
+  const sql = getSql()
+  const memberships = await sql`
+    SELECT class_id, role, module_access
+    FROM class_memberships
+    WHERE user_id = ${user.id} AND status = 'active'
+    ORDER BY approved_at ASC NULLS LAST, requested_at ASC
+  `
+  const membershipRole = memberships.some((item) => item.role === 'monitor')
+    ? 'monitor'
+    : 'student'
+  const accessModules = [...new Set(
+    memberships.flatMap((item) => accessModulesForRole(item.module_access, item.role)),
+  )]
+
+  return {
+    ...user,
+    membership_role: membershipRole,
+    access_modules: accessModules,
+    class_ids: memberships.map((item) => item.class_id),
+  }
 }
 
 export async function createSession(response, user, request, eventType = 'login') {
@@ -135,7 +180,7 @@ export async function getSession(request) {
 
   return {
     id: session.session_id,
-    user: session,
+    user: await hydrateUserAccess(session),
   }
 }
 

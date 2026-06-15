@@ -1,4 +1,9 @@
-import { createSession, publicUser, verifyPassword } from '../_lib/auth.js'
+import {
+  createSession,
+  hydrateUserAccess,
+  publicUser,
+  verifyPassword,
+} from '../_lib/auth.js'
 import { getSql } from '../_lib/db.js'
 import {
   normalizeEmail,
@@ -74,6 +79,7 @@ export default async function handler(request, response) {
       }
     }
 
+    user = await hydrateUserAccess(user)
     await recordAuthAttempt(identifier, 'login', true)
     await createSession(
       response,

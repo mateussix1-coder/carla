@@ -1,8 +1,11 @@
 import {
   BookOpenCheck,
   CalendarDays,
+  CheckCircle2,
   Clock3,
+  Copy,
   GraduationCap,
+  Link2,
   Plus,
   UserCheck,
 } from 'lucide-react'
@@ -16,6 +19,11 @@ import PageHeader from '../components/PageHeader.jsx'
 import StatCard from '../components/StatCard.jsx'
 import { useAppData } from '../context/AppDataContext.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import {
+  ACCESS_MODULES,
+  DEFAULT_MONITOR_MODULES,
+  DEFAULT_STUDENT_MODULES,
+} from '../utils/access.js'
 
 const initialForm = {
   name: '',
@@ -25,7 +33,7 @@ const initialForm = {
 }
 
 export default function Turmas() {
-  const { user } = useAuth()
+  const { user, apiRequest } = useAuth()
   const isTeacher = user.role === 'teacher'
   const {
     classes,
@@ -38,6 +46,15 @@ export default function Turmas() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState('all')
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [inviteError, setInviteError] = useState('')
+  const [inviteResult, setInviteResult] = useState(null)
+  const [inviteForm, setInviteForm] = useState({
+    role: 'student',
+    classIds: [],
+    modules: DEFAULT_STUDENT_MODULES,
+  })
 
   const filtered = useMemo(
     () => classes.filter((item) => filter === 'all' || item.status === filter),
@@ -59,6 +76,64 @@ export default function Turmas() {
     }
   }
 
+  function openInvite() {
+    const activeClassIds = classes
+      .filter((item) => item.status === 'active')
+      .map((item) => item.id)
+    setInviteForm({
+      role: 'student',
+      classIds: activeClassIds,
+      modules: DEFAULT_STUDENT_MODULES,
+    })
+    setInviteResult(null)
+    setInviteError('')
+    setInviteOpen(true)
+  }
+
+  function setInviteRole(role) {
+    setInviteForm((current) => ({
+      ...current,
+      role,
+      modules: role === 'monitor'
+        ? DEFAULT_MONITOR_MODULES
+        : DEFAULT_STUDENT_MODULES,
+    }))
+  }
+
+  function toggleInviteValue(key, value) {
+    setInviteForm((current) => ({
+      ...current,
+      [key]: current[key].includes(value)
+        ? current[key].filter((item) => item !== value)
+        : [...current[key], value],
+    }))
+  }
+
+  async function createAccessInvite(event) {
+    event.preventDefault()
+    setInviteBusy(true)
+    setInviteError('')
+    try {
+      const result = await apiRequest('/api/education/invites', {
+        method: 'POST',
+        body: JSON.stringify(inviteForm),
+      })
+      setInviteResult({
+        ...result,
+        url: `${window.location.origin}/cadastro?convite=${encodeURIComponent(result.token)}`,
+      })
+    } catch (requestError) {
+      setInviteError(requestError.message)
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
+  async function copyAccessInvite() {
+    if (!inviteResult?.url) return
+    await navigator.clipboard.writeText(inviteResult.url)
+  }
+
   const weeklyActivities = classes.reduce((sum, item) => sum + item.activityCount, 0)
 
   return (
@@ -68,10 +143,16 @@ export default function Turmas() {
         title="Turmas"
         description="Crie turmas, compartilhe acessos e acompanhe alunos e atividades sem perder o controle."
         action={isTeacher ? (
-          <button type="button" className="primary-button w-full sm:w-auto" onClick={() => setOpen(true)}>
-            <Plus size={18} />
-            Nova turma
-          </button>
+          <div className="grid w-full gap-2 sm:flex sm:w-auto">
+            <button type="button" className="secondary-button w-full sm:w-auto" onClick={() => setOpen(true)}>
+              <Plus size={18} />
+              Nova turma
+            </button>
+            <button type="button" className="primary-button w-full sm:w-auto" onClick={openInvite} disabled={!classes.some((item) => item.status === 'active')}>
+              <Link2 size={18} />
+              Novo convite de acesso
+            </button>
+          </div>
         ) : null}
       />
 
@@ -179,6 +260,142 @@ export default function Turmas() {
             </button>
           </div>
         </form>
+      </Modal>}
+
+      {isTeacher && <Modal
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Convite único de acesso"
+        subtitle="Escolha o papel, as turmas e os módulos que a pessoa poderá abrir"
+        size="max-w-3xl"
+      >
+        {inviteResult ? (
+          <div>
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 size={22} className="text-emerald-700" />
+                <div>
+                  <strong className="block text-sm text-[#073f2b]">Convite criado</strong>
+                  <span className="text-xs text-slate-500">
+                    {inviteResult.role === 'monitor' ? 'Monitor' : 'Aluno'} · {inviteResult.classes.length} turma(s)
+                  </span>
+                </div>
+              </div>
+              <p className="mt-4 break-all rounded-xl bg-white p-3 text-xs font-semibold text-slate-600">
+                {inviteResult.url}
+              </p>
+            </div>
+            <div className="modal-actions mt-5">
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d8d3c7] bg-white px-5 text-sm font-bold text-[#073f2b]"
+                onClick={() => setInviteOpen(false)}
+              >
+                Fechar
+              </button>
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#0b5136] px-5 text-sm font-bold text-white"
+                onClick={copyAccessInvite}
+              >
+                <Copy size={16} />
+                Copiar link
+              </button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={createAccessInvite} className="space-y-5">
+            <fieldset>
+              <legend className="field-label">Papel da pessoa</legend>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ['student', 'Aluno', 'Acessa somente as partes selecionadas.'],
+                  ['monitor', 'Monitor', 'Recebe todos os módulos por padrão.'],
+                ].map(([value, label, description]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setInviteRole(value)}
+                    className={`rounded-2xl border p-4 text-left transition ${
+                      inviteForm.role === value
+                        ? 'border-[#0b6847] bg-[#eef6f0]'
+                        : 'border-[#ded9ce] bg-white'
+                    }`}
+                  >
+                    <strong className="block text-sm text-[#073f2b]">{label}</strong>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500">{description}</span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <div className="flex items-center justify-between gap-3">
+                <legend className="field-label">Turmas incluídas no mesmo convite</legend>
+                <button
+                  type="button"
+                  className="text-xs font-bold text-[#0b6847]"
+                  onClick={() => setInviteForm((current) => ({
+                    ...current,
+                    classIds: classes.filter((item) => item.status === 'active').map((item) => item.id),
+                  }))}
+                >
+                  Selecionar todas
+                </button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {classes.filter((item) => item.status === 'active').map((item) => (
+                  <label key={item.id} className="flex cursor-pointer items-start gap-3 rounded-xl border border-[#e3ded3] bg-white p-3">
+                    <input
+                      type="checkbox"
+                      checked={inviteForm.classIds.includes(item.id)}
+                      onChange={() => toggleInviteValue('classIds', item.id)}
+                      className="mt-0.5 h-5 w-5 accent-[#0b6847]"
+                    />
+                    <span>
+                      <strong className="block text-xs text-[#073f2b]">{item.name}</strong>
+                      <span className="mt-1 block text-[10px] text-slate-400">{item.code}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend className="field-label">Partes do sistema permitidas</legend>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {ACCESS_MODULES.map((item) => (
+                  <label key={item.key} className="flex cursor-pointer items-center gap-3 rounded-xl border border-[#e3ded3] bg-white p-3">
+                    <input
+                      type="checkbox"
+                      checked={inviteForm.modules.includes(item.key)}
+                      onChange={() => toggleInviteValue('modules', item.key)}
+                      className="h-5 w-5 accent-[#0b6847]"
+                    />
+                    <span className="text-xs font-semibold text-slate-600">{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            {inviteError && <p className="feedback-error">{inviteError}</p>}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[#d8d3c7] bg-white px-5 text-sm font-bold text-[#073f2b]"
+                onClick={() => setInviteOpen(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#0b5136] px-5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={inviteBusy || !inviteForm.classIds.length || !inviteForm.modules.length}
+              >
+                {inviteBusy ? 'Gerando...' : 'Gerar um único link'}
+              </button>
+            </div>
+          </form>
+        )}
       </Modal>}
     </div>
   )

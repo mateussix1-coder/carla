@@ -21,6 +21,8 @@ const eventLabels = {
   membership_reactivate: 'Aluno reativado',
   membership_remove: 'Aluno removido',
   membership_role_updated: 'Papel atualizado',
+  membership_access_updated: 'Partes do sistema atualizadas',
+  access_invite_created: 'Convite único criado',
   class_created: 'Turma criada',
   class_updated: 'Configuração de turma alterada',
   class_invite_regenerated: 'Convite renovado',
@@ -140,12 +142,12 @@ export default function Permissoes() {
           </div>
           <ol className="mt-6 space-y-4">
             {[
-              'A professora cria a turma e copia o link.',
-              'O aluno preenche o cadastro pelo convite.',
-              'A solicitação aparece como pendente.',
+              'A professora cria um convite e escolhe aluno ou monitor.',
+              'No mesmo link, seleciona uma ou várias turmas e os módulos permitidos.',
+              'Quem já possui conta usa o mesmo e-mail e senha, sem novo cadastro.',
+              'A solicitação aparece como pendente quando a turma exige aprovação.',
               'A professora aprova ou recusa.',
-              'A conta aprovada recebe acesso à turma.',
-              'Bloqueios encerram as sessões imediatamente.',
+              'A conta aprovada recebe somente os acessos selecionados.',
             ].map((item, index) => (
               <li key={item} className="flex gap-3">
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#eef6f0] text-xs font-bold text-[#0b6847]">{index + 1}</span>
