@@ -266,7 +266,9 @@ export default function Alunos() {
   const active = members.filter((item) => item.membershipStatus === 'active').length
   const pending = members.filter((item) => item.membershipStatus === 'pending').length
   const blocked = members.filter((item) => item.membershipStatus === 'blocked').length
-  const monitors = members.filter((item) => item.membershipRole === 'monitor').length
+  const monitors = members.filter((item) => (
+    item.membershipStatus === 'active' && item.membershipRole === 'monitor'
+  )).length
 
   return (
     <div className="page-shell">
