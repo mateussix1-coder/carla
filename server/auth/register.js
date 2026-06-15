@@ -19,11 +19,6 @@ import {
 import { checkRateLimit, recordAuthAttempt } from '../_lib/rateLimit.js'
 import { accessModulesForRole } from '../../src/utils/access.js'
 
-function invitationClassIds(invitation) {
-  const ids = Array.isArray(invitation?.class_ids) ? invitation.class_ids : []
-  return [...new Set([...ids, invitation?.class_id].filter(Boolean))]
-}
-
 async function loadInvitation(sql, token) {
   if (!token) return null
   const rows = await sql`
@@ -36,25 +31,25 @@ async function loadInvitation(sql, token) {
     WHERE
       ci.token = ${token}
       AND ci.active = TRUE
+      AND jsonb_array_length(ci.class_ids) > 0
       AND (ci.expires_at IS NULL OR ci.expires_at > NOW())
-      AND COALESCE((c.settings->>'linkActive')::boolean, TRUE) = TRUE
     LIMIT 1
   `
   const invitation = rows[0]
   if (!invitation) return null
 
-  const classIds = invitationClassIds(invitation)
   const classes = await sql`
-    SELECT id, name, code, description, settings
+    SELECT id, name, code, description
     FROM classes
-    WHERE id = ANY(${classIds}::text[]) AND status = 'active'
+    WHERE status = 'active'
     ORDER BY created_at ASC
   `
-  if (classes.length !== classIds.length) return null
+  if (!classes.length) return null
 
   return {
     ...invitation,
     classes,
+    globalAccess: true,
     role: invitation.role === 'monitor' ? 'monitor' : 'student',
     moduleAccess: accessModulesForRole(
       invitation.module_access,
@@ -66,8 +61,6 @@ async function loadInvitation(sql, token) {
 async function addMemberships(sql, userId, invitation) {
   const results = []
   for (const classItem of invitation.classes) {
-    const requiresApproval = classItem.settings?.manualApproval !== false
-    const membershipStatus = requiresApproval ? 'pending' : 'active'
     const rows = await sql`
       INSERT INTO class_memberships (
         class_id,
@@ -83,9 +76,9 @@ async function addMemberships(sql, userId, invitation) {
         ${userId},
         ${invitation.role},
         ${JSON.stringify(invitation.moduleAccess)}::jsonb,
-        ${membershipStatus},
+        'pending',
         0,
-        ${requiresApproval ? null : new Date().toISOString()}
+        NULL
       )
       ON CONFLICT (class_id, user_id) DO UPDATE SET
         role = CASE
@@ -218,12 +211,13 @@ export default async function handler(request, response) {
         })
       }
     } else {
-      if (name.length < 3 || className.length < 2) {
+      if (name.length < 3 || (!invitation && className.length < 2)) {
         await recordAuthAttempt(identifier, 'register', false)
-        return sendJson(response, 400, { error: 'Preencha nome, e-mail e turma ou curso.' })
+        return sendJson(response, 400, { error: 'Preencha nome e e-mail.' })
       }
       const userId = randomUUID()
       const initialStatus = invitation ? 'pending' : 'active'
+      const profileClassName = className.length >= 2 ? className : 'Turma geral'
       const rows = await sql`
         INSERT INTO users (
           id,
@@ -242,7 +236,7 @@ export default async function handler(request, response) {
           ${email},
           ${hashPassword(password)},
           'student',
-          ${className},
+          ${profileClassName},
           ${invitation?.role === 'monitor' ? 'Monitor' : 'Aluno'},
           ${initialStatus},
           TRUE
@@ -289,6 +283,7 @@ export default async function handler(request, response) {
           classIds: invitation?.classes.map((item) => item.id) || [],
           role: invitation?.role || 'student',
           moduleAccess: invitation?.moduleAccess || ['academic'],
+          globalAccess: Boolean(invitation?.globalAccess),
           existingAccount,
         })}::jsonb
       )

@@ -4,21 +4,14 @@ import {
   BookOpenCheck,
   CalendarDays,
   Check,
-  CheckCircle2,
   Clipboard,
   Clock3,
-  Copy,
-  Link2,
   MessageCircleMore,
-  MoreHorizontal,
   Plus,
-  QrCode,
   RefreshCw,
   Settings2,
-  ShieldCheck,
   Trash2,
   UserCheck,
-  UserRound,
   UserX,
   Users,
   X,
@@ -45,8 +38,6 @@ const tabItems = [
 ]
 
 const settingLabels = {
-  linkActive: ['Link ativo', 'Permite novas solicitações pelo link da turma.'],
-  manualApproval: ['Aprovação manual', 'A professora decide quem entra antes do primeiro acesso.'],
   allowReentry: ['Permitir reativação', 'A professora pode restaurar matrículas removidas.'],
   notifications: ['Notificações', 'Avisar sobre solicitações e novas atividades.'],
   allowComments: ['Comentários no mural', 'Alunos podem comentar as publicações da turma.'],
@@ -100,8 +91,6 @@ export default function TurmaDetalhe() {
   const [busy, setBusy] = useState('')
   const [confirmAction, setConfirmAction] = useState(null)
   const [deleteClassOpen, setDeleteClassOpen] = useState(false)
-  const [qrCode, setQrCode] = useState('')
-  const [qrOpen, setQrOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
   const [eventOpen, setEventOpen] = useState(false)
   const [accessMember, setAccessMember] = useState(null)
@@ -130,9 +119,6 @@ export default function TurmaDetalhe() {
   const visibleTabs = isTeacher
     ? tabItems
     : tabItems.filter((item) => ['wall', 'activities', 'agenda'].includes(item.value))
-  const inviteUrl = classItem?.inviteToken
-    ? `${window.location.origin}/cadastro?convite=${encodeURIComponent(classItem.inviteToken)}`
-    : ''
 
   const filteredMembers = useMemo(
     () => (detail?.members || []).filter((member) => {
@@ -147,48 +133,14 @@ export default function TurmaDetalhe() {
     [feedPosts, id],
   )
 
-  async function copyInvite() {
-    if (!inviteUrl) return
-    await navigator.clipboard.writeText(inviteUrl)
-    notify('Link da turma copiado.')
-  }
-
-  async function regenerateInvite() {
-    setBusy('invite')
-    try {
-      const result = await apiRequest(`/api/education/classes/${id}/invite`, { method: 'POST' })
-      setDetail((current) => ({
-        ...current,
-        class: { ...current.class, inviteToken: result.token },
-      }))
-      await refreshEducation()
-      notify('Novo convite gerado. O link anterior foi desativado.')
-    } catch (requestError) {
-      notify(requestError.message)
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function showQrCode() {
-    if (!inviteUrl) return
-    const QRCodeLibrary = await import('qrcode')
-    setQrCode(await QRCodeLibrary.toDataURL(inviteUrl, {
-      width: 360,
-      margin: 2,
-      color: { dark: '#073f2b', light: '#ffffff' },
-    }))
-    setQrOpen(true)
-  }
-
   async function memberAction(member, action, role, modules) {
     setBusy(`${member.id}-${action}`)
     try {
-      const next = await apiRequest(`/api/education/classes/${id}/members/${member.id}`, {
+      await apiRequest(`/api/education/members/${member.id}`, {
         method: 'PATCH',
         body: JSON.stringify({ action, role, modules }),
       })
-      setDetail(next)
+      await load()
       await refreshEducation()
       const messages = {
         approve: 'Aluno aprovado e acesso liberado.',
@@ -355,18 +307,10 @@ export default function TurmaDetalhe() {
               </p>
             </div>
             {isTeacher && <div className="grid grid-cols-2 gap-2 sm:flex">
-              <button type="button" className="hero-button" onClick={copyInvite}>
-                <Copy size={17} />
-                Copiar link
-              </button>
-              <button type="button" className="hero-button" onClick={showQrCode}>
-                <QrCode size={17} />
-                QR Code
-              </button>
-              <button type="button" className="hero-button col-span-2" onClick={regenerateInvite} disabled={busy === 'invite'}>
-                <RefreshCw size={17} />
-                {busy === 'invite' ? 'Gerando...' : 'Novo convite'}
-              </button>
+              <Link to="/alunos" className="hero-button col-span-2">
+                <Users size={17} />
+                Pessoas e convites
+              </Link>
               <button type="button" className="hero-button col-span-2 text-red-100" onClick={() => setDeleteClassOpen(true)}>
                 <Trash2 size={17} />
                 Excluir turma
@@ -379,7 +323,7 @@ export default function TurmaDetalhe() {
       {isTeacher && pending > 0 && (
         <button
           type="button"
-          onClick={() => setTab('students')}
+          onClick={() => navigate('/alunos')}
           className="mt-5 flex w-full items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left transition hover:border-amber-300"
         >
           <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-amber-500 text-white">
@@ -390,7 +334,7 @@ export default function TurmaDetalhe() {
               {pending} solicitação{pending > 1 ? 'ões' : ''} aguardando aprovação
             </strong>
             <span className="mt-1 block text-xs text-amber-700">
-              Revise os dados antes de liberar o primeiro acesso.
+              A aprovação é feita uma única vez em Pessoas e convites.
             </span>
           </span>
           <UserCheck size={18} className="text-amber-700" />
@@ -621,7 +565,7 @@ export default function TurmaDetalhe() {
                   ))}
                 </div>
               ) : (
-                <EmptyState title="Nenhum aluno neste filtro" description="Altere o filtro ou compartilhe o link da turma." />
+                <EmptyState title="Nenhum aluno neste filtro" description="Altere o filtro ou abra Pessoas e convites para gerenciar os acessos." />
               )}
             </div>
           )}
@@ -695,21 +639,21 @@ export default function TurmaDetalhe() {
             <header className="border-b border-[#e9e4da] bg-[#fbfaf6] p-5">
               <div className="flex items-center gap-3">
                 <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#073f2b] text-white">
-                  <Link2 size={19} />
+                  <Users size={19} />
                 </span>
                 <div>
-                  <h2 className="font-bold text-[#073f2b]">Convite da turma</h2>
-                  <p className="mt-1 text-[10px] text-slate-500">Compartilhe somente com seus alunos.</p>
+                  <h2 className="font-bold text-[#073f2b]">Pessoas e convites</h2>
+                  <p className="mt-1 text-[10px] text-slate-500">Um único lugar para convites, aprovações e acessos.</p>
                 </div>
               </div>
             </header>
             <div className="p-5">
-              <div className="rounded-xl border border-dashed border-[#cfc8b9] bg-[#f8f6f1] p-3">
-                <p className="truncate text-xs font-semibold text-slate-600">{inviteUrl}</p>
-              </div>
-              <button type="button" onClick={copyInvite} className="primary-button mt-3 w-full">
-                <Copy size={16} /> Copiar link
-              </button>
+              <p className="text-xs leading-5 text-slate-500">
+                Cada pessoa aparece uma vez. Dentro do perfil ficam todas as turmas e áreas liberadas.
+              </p>
+              <Link to="/alunos" className="primary-button mt-3 w-full">
+                <Users size={16} /> Abrir pessoas e convites
+              </Link>
             </div>
           </article>
 
@@ -736,16 +680,6 @@ export default function TurmaDetalhe() {
           </article>
         </aside>}
       </div>
-
-      <Modal open={qrOpen} onClose={() => setQrOpen(false)} title="QR Code da turma" subtitle={classItem.name} size="max-w-md">
-        <div className="text-center">
-          {qrCode && <img src={qrCode} alt={`QR Code da turma ${classItem.name}`} className="mx-auto w-full max-w-72 rounded-2xl border bg-white p-3" />}
-          <p className="mt-4 text-sm leading-6 text-slate-500">O aluno aponta a câmera e solicita entrada na turma.</p>
-          <button type="button" className="primary-button mt-5 w-full" onClick={copyInvite}>
-            <Copy size={17} /> Copiar link também
-          </button>
-        </div>
-      </Modal>
 
       <Modal open={activityOpen} onClose={() => setActivityOpen(false)} title="Nova atividade" subtitle={classItem.name}>
         <form onSubmit={createActivity} className="space-y-4">
@@ -797,7 +731,7 @@ export default function TurmaDetalhe() {
         open={Boolean(accessMember)}
         onClose={() => setAccessMember(null)}
         title={`Partes liberadas para ${accessMember?.name || ''}`}
-        subtitle="A alteração vale para esta matrícula e preserva os outros vínculos da pessoa"
+        subtitle="A alteração vale para a pessoa em todas as turmas e áreas"
         size="max-w-2xl"
       >
         {accessMember && (
@@ -849,7 +783,7 @@ export default function TurmaDetalhe() {
                   ? 'O acesso será removido e o histórico acadêmico permanecerá preservado.'
                   : confirmAction.action === 'block'
                     ? 'A sessão será encerrada imediatamente. Você poderá reativar o acesso depois.'
-                    : 'A solicitação será recusada e o aluno não conseguirá entrar nesta turma.'}
+                    : 'A solicitação será recusada e a pessoa não conseguirá acessar o sistema.'}
               </p>
             </div>
             <div className="modal-actions mt-5">

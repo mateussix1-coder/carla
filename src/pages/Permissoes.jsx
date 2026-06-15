@@ -137,17 +137,17 @@ export default function Permissoes() {
             </span>
             <div>
               <h2 className="section-title">Como o acesso funciona</h2>
-              <p className="mt-1 text-xs text-slate-500">Fluxo padrão para novas turmas.</p>
+              <p className="mt-1 text-xs text-slate-500">Fluxo único para entrada no sistema.</p>
             </div>
           </div>
           <ol className="mt-6 space-y-4">
             {[
               'A professora cria um convite e escolhe aluno ou monitor.',
-              'No mesmo link, seleciona uma ou várias turmas e os módulos permitidos.',
+              'No mesmo link, escolhe somente as partes do sistema permitidas.',
               'Quem já possui conta usa o mesmo e-mail e senha, sem novo cadastro.',
-              'A solicitação aparece como pendente quando a turma exige aprovação.',
-              'A professora aprova ou recusa.',
-              'A conta aprovada recebe somente os acessos selecionados.',
+              'A pessoa aparece uma única vez em Pessoas e convites.',
+              'A professora aprova ou recusa uma única solicitação.',
+              'No perfil da pessoa ficam reunidas todas as turmas e áreas ativas.',
             ].map((item, index) => (
               <li key={item} className="flex gap-3">
                 <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#eef6f0] text-xs font-bold text-[#0b6847]">{index + 1}</span>

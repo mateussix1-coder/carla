@@ -48,6 +48,169 @@ function membershipDto(row) {
   }
 }
 
+function groupedMembershipDto(rows) {
+  if (!rows.length) return null
+  const row = rows[0]
+  const classes = rows
+    .filter((item) => item.class_id)
+    .map((item) => ({
+      id: item.class_id,
+      name: item.membership_class_name,
+      code: item.membership_class_code,
+      status: item.membership_status,
+      role: item.membership_role || 'student',
+      accessModules: accessModulesForRole(
+        item.module_access,
+        item.membership_role || 'student',
+      ),
+      progress: Number(item.progress || 0),
+      requestedAt: item.requested_at,
+      approvedAt: item.approved_at,
+    }))
+  const statuses = classes.map((item) => item.status)
+  const membershipStatus = row.status === 'blocked'
+    ? 'blocked'
+    : statuses.includes('pending')
+      ? 'pending'
+      : statuses.includes('active') || row.status === 'active'
+        ? 'active'
+        : statuses.includes('blocked')
+          ? 'blocked'
+          : statuses.includes('removed')
+            ? 'removed'
+            : statuses.includes('rejected')
+              ? 'rejected'
+              : row.status === 'pending'
+                ? 'pending'
+                : 'removed'
+  const membershipRole = classes.some((item) => item.role === 'monitor')
+    || String(row.responsibility || '').trim().toLowerCase() === 'monitor'
+    ? 'monitor'
+    : 'student'
+  const accessModules = [...new Set(
+    classes.flatMap((item) => item.accessModules),
+  )]
+  const progressValues = classes
+    .filter((item) => item.status === 'active')
+    .map((item) => item.progress)
+
+  return {
+    ...publicUser(row, true),
+    membershipRole,
+    membershipStatus,
+    accessModules: accessModulesForRole(accessModules, membershipRole),
+    classIds: classes.map((item) => item.id),
+    classes,
+    progress: progressValues.length
+      ? Math.round(progressValues.reduce((sum, value) => sum + value, 0) / progressValues.length)
+      : 0,
+    requestedAt: classes
+      .map((item) => item.requestedAt)
+      .filter(Boolean)
+      .sort()[0] || null,
+    approvedAt: classes
+      .map((item) => item.approvedAt)
+      .filter(Boolean)
+      .sort()
+      .at(-1) || null,
+  }
+}
+
+async function memberRows(sql, userId = '') {
+  return sql`
+    SELECT
+      u.*,
+      cm.class_id,
+      c.name AS membership_class_name,
+      c.code AS membership_class_code,
+      cm.role AS membership_role,
+      cm.module_access,
+      cm.status AS membership_status,
+      cm.progress,
+      cm.requested_at,
+      cm.approved_at
+    FROM users u
+    LEFT JOIN class_memberships cm ON cm.user_id = u.id
+    LEFT JOIN classes c ON c.id = cm.class_id
+    WHERE
+      u.role = 'student'
+      AND (${userId} = '' OR u.id = ${userId})
+    ORDER BY
+      CASE
+        WHEN u.status = 'pending' OR cm.status = 'pending' THEN 0
+        WHEN u.status = 'active' OR cm.status = 'active' THEN 1
+        WHEN u.status = 'blocked' OR cm.status = 'blocked' THEN 2
+        ELSE 3
+      END,
+      u.name,
+      c.created_at
+  `
+}
+
+export function groupMemberRows(rows) {
+  const groups = new Map()
+  for (const row of rows) {
+    if (!groups.has(row.id)) groups.set(row.id, [])
+    groups.get(row.id).push(row)
+  }
+  return [...groups.values()].map(groupedMembershipDto).filter(Boolean)
+}
+
+async function getMemberOverview(sql, userId) {
+  return groupMemberRows(await memberRows(sql, userId))[0] || null
+}
+
+async function memberDefaults(sql, userId) {
+  const rows = await sql`
+    SELECT role, module_access
+    FROM class_memberships
+    WHERE user_id = ${userId}
+    ORDER BY
+      CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
+      updated_at DESC
+  `
+  const role = rows.some((item) => item.role === 'monitor') ? 'monitor' : 'student'
+  const modules = [...new Set(
+    rows.flatMap((item) => accessModulesForRole(item.module_access, item.role)),
+  )]
+  return {
+    role,
+    modules: accessModulesForRole(modules, role),
+  }
+}
+
+async function addMissingActiveClasses(sql, userId, role, modules, status = 'active') {
+  const classes = await sql`
+    SELECT id
+    FROM classes
+    WHERE status = 'active'
+    ORDER BY created_at ASC
+  `
+  for (const classItem of classes) {
+    await sql`
+      INSERT INTO class_memberships (
+        class_id,
+        user_id,
+        role,
+        module_access,
+        status,
+        progress,
+        approved_at
+      )
+      VALUES (
+        ${classItem.id},
+        ${userId},
+        ${role},
+        ${JSON.stringify(modules)}::jsonb,
+        ${status},
+        0,
+        ${status === 'active' ? new Date().toISOString() : null}
+      )
+      ON CONFLICT (class_id, user_id) DO NOTHING
+    `
+  }
+}
+
 async function listClasses(sql, user) {
   const rows = user.role === 'teacher'
     ? await sql`
@@ -270,30 +433,26 @@ export default async function handler(request, response) {
       WHERE
         ci.token = ${decodeURIComponent(inviteMatch[1])}
         AND ci.active = TRUE
-        AND c.status = 'active'
+        AND jsonb_array_length(ci.class_ids) > 0
         AND (ci.expires_at IS NULL OR ci.expires_at > NOW())
-        AND COALESCE((c.settings->>'linkActive')::boolean, TRUE) = TRUE
       LIMIT 1
     `
     if (!rows[0]) return sendJson(response, 404, { error: 'Este convite não está mais disponível.' })
     const invitation = rows[0]
-    const classIds = [...new Set([
-      ...(Array.isArray(invitation.class_ids) ? invitation.class_ids : []),
-      invitation.class_id,
-    ].filter(Boolean))]
     const classes = await sql`
       SELECT id, name, code, description
       FROM classes
-      WHERE id = ANY(${classIds}::text[]) AND status = 'active'
+      WHERE status = 'active'
       ORDER BY created_at ASC
     `
-    if (classes.length !== classIds.length) {
+    if (!classes.length) {
       return sendJson(response, 404, { error: 'Este convite não está mais disponível.' })
     }
     const role = invitation.role === 'monitor' ? 'monitor' : 'student'
     return sendJson(response, 200, {
       class: classes[0],
       classes,
+      globalAccess: true,
       role,
       modules: accessModulesForRole(invitation.module_access, role),
       moduleOptions: ACCESS_MODULES,
@@ -306,15 +465,33 @@ export default async function handler(request, response) {
 
   if ((path === '' || path === 'summary') && request.method === 'GET') {
     const classes = await listClasses(sql, session.user)
-    const totals = classes.reduce(
-      (result, item) => ({
-        activeClasses: result.activeClasses + (item.status === 'active' ? 1 : 0),
-        students: result.students + item.studentCount,
-        pending: result.pending + item.pendingCount,
-        activities: result.activities + item.activityCount,
-      }),
-      { activeClasses: 0, students: 0, pending: 0, activities: 0 },
-    )
+    const peopleRows = teacher
+      ? await sql`
+          SELECT
+            COUNT(*) FILTER (WHERE u.status = 'active')::int AS active,
+            COUNT(*) FILTER (
+              WHERE
+                u.status = 'pending'
+                OR EXISTS (
+                  SELECT 1
+                  FROM class_memberships pending_membership
+                  WHERE
+                    pending_membership.user_id = u.id
+                    AND pending_membership.status = 'pending'
+                )
+            )::int AS pending
+          FROM users u
+          WHERE u.role = 'student'
+        `
+      : [{ active: 0, pending: 0 }]
+    const totals = {
+      activeClasses: classes.filter((item) => item.status === 'active').length,
+      students: teacher
+        ? Number(peopleRows[0]?.active || 0)
+        : Number(classes.some((item) => item.status === 'active')),
+      pending: Number(peopleRows[0]?.pending || 0),
+      activities: classes.reduce((sum, item) => sum + item.activityCount, 0),
+    }
     return sendJson(response, 200, { classes, totals })
   }
 
@@ -357,37 +534,8 @@ export default async function handler(request, response) {
 
   if (path === 'members' && request.method === 'GET') {
     if (!teacher) return sendJson(response, 403, { error: 'Acesso restrito à professora.' })
-    const rows = await sql`
-      SELECT
-        u.*,
-        cm.class_id,
-        c.name AS class_name,
-        c.code AS class_code,
-        cm.role AS membership_role,
-        cm.module_access,
-        cm.status AS membership_status,
-        cm.progress,
-        cm.requested_at,
-        cm.approved_at
-      FROM class_memberships cm
-      JOIN users u ON u.id = cm.user_id
-      JOIN classes c ON c.id = cm.class_id
-      ORDER BY
-        CASE cm.status
-          WHEN 'pending' THEN 0
-          WHEN 'active' THEN 1
-          WHEN 'blocked' THEN 2
-          ELSE 3
-        END,
-        u.name
-    `
     return sendJson(response, 200, {
-      members: rows.map((row) => ({
-        ...membershipDto(row),
-        classId: row.class_id,
-        className: row.class_name,
-        classCode: row.class_code,
-      })),
+      members: groupMemberRows(await memberRows(sql)),
     })
   }
 
@@ -428,19 +576,24 @@ export default async function handler(request, response) {
     if (!teacher) return sendJson(response, 403, { error: 'Acesso restrito à professora.' })
     const [pending, blocked, invites, history] = await Promise.all([
       sql`
-        SELECT COUNT(*)::int AS total
-        FROM class_memberships
-        WHERE status = 'pending'
+        SELECT COUNT(DISTINCT u.id)::int AS total
+        FROM users u
+        LEFT JOIN class_memberships cm ON cm.user_id = u.id
+        WHERE u.role = 'student' AND (u.status = 'pending' OR cm.status = 'pending')
       `,
       sql`
-        SELECT COUNT(*)::int AS total
-        FROM class_memberships
-        WHERE status = 'blocked'
+        SELECT COUNT(DISTINCT u.id)::int AS total
+        FROM users u
+        LEFT JOIN class_memberships cm ON cm.user_id = u.id
+        WHERE u.role = 'student' AND (u.status = 'blocked' OR cm.status = 'blocked')
       `,
       sql`
         SELECT COUNT(*)::int AS total
         FROM class_invitations
-        WHERE active = TRUE AND (expires_at IS NULL OR expires_at > NOW())
+        WHERE
+          active = TRUE
+          AND jsonb_array_length(class_ids) > 0
+          AND (expires_at IS NULL OR expires_at > NOW())
       `,
       sql`
         SELECT ae.*, u.name AS user_name
@@ -473,20 +626,14 @@ export default async function handler(request, response) {
     if (!teacher) return sendJson(response, 403, { error: 'Apenas a professora pode gerar convites.' })
     const body = readBody(request)
     const role = body.role === 'monitor' ? 'monitor' : 'student'
-    const requestedClassIds = Array.isArray(body.classIds)
-      ? [...new Set(body.classIds.map((item) => cleanText(item, 120)).filter(Boolean))]
-      : []
-    if (!requestedClassIds.length) {
-      return sendJson(response, 400, { error: 'Selecione pelo menos uma turma.' })
-    }
     const classes = await sql`
       SELECT id, name, code
       FROM classes
-      WHERE id = ANY(${requestedClassIds}::text[]) AND status = 'active'
+      WHERE status = 'active'
       ORDER BY created_at ASC
     `
-    if (classes.length !== requestedClassIds.length) {
-      return sendJson(response, 400, { error: 'Uma das turmas selecionadas não está disponível.' })
+    if (!classes.length) {
+      return sendJson(response, 400, { error: 'Crie uma área ativa antes de gerar o convite.' })
     }
     const modules = accessModulesForRole(body.modules, role)
     const token = randomUUID()
@@ -514,12 +661,13 @@ export default async function handler(request, response) {
       role,
       classIds: classes.map((item) => item.id),
       modules,
+      globalAccess: true,
     })
     return sendJson(response, 201, {
       token,
       role,
-      classes,
       modules,
+      globalAccess: true,
     })
   }
 
@@ -538,30 +686,9 @@ export default async function handler(request, response) {
     const duplicate = await sql`SELECT id FROM classes WHERE code = ${code} LIMIT 1`
     if (duplicate[0]) return sendJson(response, 409, { error: 'Este código de turma já está em uso.' })
     const classId = randomUUID()
-    const token = randomUUID()
     await sql`
       INSERT INTO classes (id, name, code, description, teacher_id, color)
       VALUES (${classId}, ${name}, ${code}, ${description}, ${session.user.id}, ${color})
-    `
-    await sql`
-      INSERT INTO class_invitations (
-        id,
-        class_id,
-        token,
-        role,
-        class_ids,
-        module_access,
-        created_by
-      )
-      VALUES (
-        ${randomUUID()},
-        ${classId},
-        ${token},
-        'student',
-        ${JSON.stringify([classId])}::jsonb,
-        '["academic"]'::jsonb,
-        ${session.user.id}
-      )
     `
     await sql`
       INSERT INTO class_memberships (
@@ -576,8 +703,42 @@ export default async function handler(request, response) {
       SELECT
         ${classId},
         u.id,
-        'monitor',
-        ${JSON.stringify(ACCESS_MODULES.map((item) => item.key))}::jsonb,
+        CASE
+          WHEN
+            LOWER(TRIM(u.responsibility)) = 'monitor'
+            OR EXISTS (
+              SELECT 1
+              FROM class_memberships monitor_membership
+              WHERE
+                monitor_membership.user_id = u.id
+                AND monitor_membership.role = 'monitor'
+                AND monitor_membership.status = 'active'
+            )
+          THEN 'monitor'
+          ELSE 'student'
+        END,
+        CASE
+          WHEN
+            LOWER(TRIM(u.responsibility)) = 'monitor'
+            OR EXISTS (
+              SELECT 1
+              FROM class_memberships monitor_membership
+              WHERE
+                monitor_membership.user_id = u.id
+                AND monitor_membership.role = 'monitor'
+                AND monitor_membership.status = 'active'
+            )
+          THEN ${JSON.stringify(ACCESS_MODULES.map((item) => item.key))}::jsonb
+          ELSE COALESCE((
+            SELECT existing_membership.module_access
+            FROM class_memberships existing_membership
+            WHERE
+              existing_membership.user_id = u.id
+              AND existing_membership.status = 'active'
+            ORDER BY existing_membership.updated_at DESC
+            LIMIT 1
+          ), '["academic"]'::jsonb)
+        END,
         'active',
         0,
         NOW()
@@ -585,23 +746,7 @@ export default async function handler(request, response) {
       WHERE
         u.role = 'student'
         AND u.status = 'active'
-        AND (
-          LOWER(TRIM(u.responsibility)) = 'monitor'
-          OR EXISTS (
-            SELECT 1
-            FROM class_memberships existing_membership
-            WHERE
-              existing_membership.user_id = u.id
-              AND existing_membership.role = 'monitor'
-              AND existing_membership.status = 'active'
-          )
-        )
-      ON CONFLICT (class_id, user_id) DO UPDATE SET
-        role = 'monitor',
-        module_access = EXCLUDED.module_access,
-        status = 'active',
-        approved_at = COALESCE(class_memberships.approved_at, NOW()),
-        updated_at = NOW()
+      ON CONFLICT (class_id, user_id) DO NOTHING
     `
     await audit(sql, session.user.id, 'class_created', 'class', classId, { code })
     const detail = await classDetail(sql, classId, session.user)
@@ -654,95 +799,148 @@ export default async function handler(request, response) {
   const inviteCreateMatch = path.match(/^classes\/([^/]+)\/invite$/)
   if (inviteCreateMatch && request.method === 'POST') {
     if (!teacher) return sendJson(response, 403, { error: 'Apenas a professora pode gerar convites.' })
-    const classId = decodeURIComponent(inviteCreateMatch[1])
-    const exists = await sql`SELECT id FROM classes WHERE id = ${classId} LIMIT 1`
-    if (!exists[0]) return sendJson(response, 404, { error: 'Turma não encontrada.' })
-    const token = randomUUID()
-    await sql`
-      UPDATE class_invitations
-      SET active = FALSE
-      WHERE class_id = ${classId} AND jsonb_array_length(class_ids) <= 1
-    `
-    await sql`
-      INSERT INTO class_invitations (
-        id,
-        class_id,
-        token,
-        role,
-        class_ids,
-        module_access,
-        created_by
-      )
-      VALUES (
-        ${randomUUID()},
-        ${classId},
-        ${token},
-        'student',
-        ${JSON.stringify([classId])}::jsonb,
-        '["academic"]'::jsonb,
-        ${session.user.id}
-      )
-    `
-    await audit(sql, session.user.id, 'class_invite_regenerated', 'class', classId)
-    return sendJson(response, 201, { token })
+    return sendJson(response, 410, {
+      error: 'Os convites por turma foram substituídos pelo convite geral em Pessoas e convites.',
+    })
   }
 
   const memberMatch = path.match(/^classes\/([^/]+)\/members\/([^/]+)$/)
   if (memberMatch && request.method === 'PATCH') {
     if (!teacher) return sendJson(response, 403, { error: 'Apenas a professora pode gerenciar alunos.' })
-    const classId = decodeURIComponent(memberMatch[1])
-    const userId = decodeURIComponent(memberMatch[2])
+    return sendJson(response, 410, {
+      error: 'As ações por turma foram substituídas pela gestão geral em Pessoas e convites.',
+    })
+  }
+
+  const globalMemberMatch = path.match(/^members\/([^/]+)$/)
+  if (globalMemberMatch && request.method === 'PATCH') {
+    if (!teacher) return sendJson(response, 403, { error: 'Apenas a professora pode gerenciar pessoas.' })
+    const userId = decodeURIComponent(globalMemberMatch[1])
     const body = readBody(request)
     const action = cleanText(body.action, 30)
-    const role = ['student', 'monitor'].includes(body.role) ? body.role : 'student'
-    const statusByAction = {
-      approve: 'active',
-      reject: 'rejected',
-      block: 'blocked',
-      reactivate: 'active',
-      remove: 'removed',
-    }
+    const userRows = await sql`
+      SELECT *
+      FROM users
+      WHERE id = ${userId} AND role = 'student'
+      LIMIT 1
+    `
+    if (!userRows[0]) return sendJson(response, 404, { error: 'Pessoa não encontrada.' })
 
-    if (action === 'role') {
+    const defaults = await memberDefaults(sql, userId)
+    const role = body.role === 'monitor'
+      ? 'monitor'
+      : body.role === 'student'
+        ? 'student'
+        : defaults.role
+    const modules = Array.isArray(body.modules)
+      ? accessModulesForRole(body.modules, role)
+      : action === 'role'
+        ? accessModulesForRole([], role)
+      : role === 'monitor'
+        ? accessModulesForRole([], 'monitor')
+        : defaults.modules
+
+    if (action === 'approve') {
+      await addMissingActiveClasses(sql, userId, role, modules, 'active')
       await sql`
         UPDATE class_memberships
-        SET role = ${role}, updated_at = NOW()
-        WHERE class_id = ${classId} AND user_id = ${userId}
+        SET
+          status = CASE WHEN status = 'pending' THEN 'active' ELSE status END,
+          approved_at = CASE WHEN status = 'pending' THEN NOW() ELSE approved_at END,
+          updated_at = NOW()
+        WHERE user_id = ${userId}
       `
-      await audit(sql, session.user.id, 'membership_role_updated', 'user', userId, { classId, role })
-    } else if (action === 'access') {
-      const modules = accessModulesForRole(body.modules, role)
-      const rows = await sql`
+      await sql`
+        UPDATE users
+        SET status = 'active', updated_at = NOW()
+        WHERE id = ${userId}
+      `
+    } else if (action === 'reject') {
+      await sql`
         UPDATE class_memberships
-        SET module_access = ${JSON.stringify(modules)}::jsonb, updated_at = NOW()
-        WHERE class_id = ${classId} AND user_id = ${userId}
-        RETURNING user_id
+        SET status = 'rejected', updated_at = NOW()
+        WHERE user_id = ${userId} AND status = 'pending'
       `
-      if (!rows[0]) return sendJson(response, 404, { error: 'Matrícula não encontrada.' })
-      await audit(sql, session.user.id, 'membership_access_updated', 'user', userId, {
-        classId,
-        modules,
-      })
-    } else if (statusByAction[action]) {
-      const membershipStatus = statusByAction[action]
-      const rows = await sql`
+      await syncUserStatus(sql, userId)
+    } else if (action === 'block') {
+      await sql`
+        UPDATE class_memberships
+        SET status = 'blocked', updated_at = NOW()
+        WHERE user_id = ${userId} AND status IN ('active', 'pending')
+      `
+      await sql`
+        UPDATE users
+        SET status = 'blocked', updated_at = NOW()
+        WHERE id = ${userId}
+      `
+      await sql`DELETE FROM sessions WHERE user_id = ${userId}`
+    } else if (action === 'reactivate') {
+      await addMissingActiveClasses(sql, userId, role, modules, 'active')
+      await sql`
         UPDATE class_memberships
         SET
-          status = ${membershipStatus},
-          approved_at = CASE WHEN ${membershipStatus} = 'active' THEN NOW() ELSE approved_at END,
+          status = 'active',
+          approved_at = COALESCE(approved_at, NOW()),
           updated_at = NOW()
-        WHERE class_id = ${classId} AND user_id = ${userId}
-        RETURNING user_id
+        WHERE user_id = ${userId}
       `
-      if (!rows[0]) return sendJson(response, 404, { error: 'Matrícula não encontrada.' })
-
-      await syncUserStatus(sql, userId)
-      await audit(sql, session.user.id, `membership_${action}`, 'user', userId, { classId })
+      await sql`
+        UPDATE users
+        SET status = 'active', updated_at = NOW()
+        WHERE id = ${userId}
+      `
+    } else if (action === 'remove') {
+      await sql`
+        UPDATE class_memberships
+        SET status = 'removed', updated_at = NOW()
+        WHERE user_id = ${userId}
+      `
+      await sql`
+        UPDATE users
+        SET status = 'archived', updated_at = NOW()
+        WHERE id = ${userId}
+      `
+      await sql`DELETE FROM sessions WHERE user_id = ${userId}`
+    } else if (action === 'role') {
+      if (userRows[0].status === 'active') {
+        await addMissingActiveClasses(sql, userId, role, modules, 'active')
+      }
+      await sql`
+        UPDATE class_memberships
+        SET
+          role = ${role},
+          module_access = ${JSON.stringify(modules)}::jsonb,
+          updated_at = NOW()
+        WHERE user_id = ${userId}
+      `
+      await sql`
+        UPDATE users
+        SET
+          responsibility = ${role === 'monitor' ? 'Monitor' : 'Aluno'},
+          updated_at = NOW()
+        WHERE id = ${userId}
+      `
+    } else if (action === 'access') {
+      if (userRows[0].status === 'active') {
+        await addMissingActiveClasses(sql, userId, role, modules, 'active')
+      }
+      await sql`
+        UPDATE class_memberships
+        SET module_access = ${JSON.stringify(modules)}::jsonb, updated_at = NOW()
+        WHERE user_id = ${userId}
+      `
     } else {
-      return sendJson(response, 400, { error: 'Ação de aluno inválida.' })
+      return sendJson(response, 400, { error: 'Ação de acesso inválida.' })
     }
 
-    return sendJson(response, 200, await classDetail(sql, classId, session.user))
+    await audit(sql, session.user.id, `membership_${action}`, 'user', userId, {
+      globalAccess: true,
+      role,
+      modules,
+    })
+    return sendJson(response, 200, {
+      member: await getMemberOverview(sql, userId),
+    })
   }
 
   const activityMatch = path.match(/^classes\/([^/]+)\/activities$/)

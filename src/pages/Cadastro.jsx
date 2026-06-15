@@ -88,9 +88,9 @@ export default function Cadastro() {
             </h1>
             <p className="mt-2 max-w-md text-sm leading-6 text-white/65">
               {pendingApproval
-                ? 'A professora recebeu seus dados e precisa aprovar o primeiro acesso.'
+                ? 'A professora recebeu seus dados. A aprovação acontece uma única vez.'
                 : invitedClass
-                  ? `Este convite libera ${inviteDetails?.classes?.length || 1} turma(s) na mesma conta.`
+                  ? 'Este convite libera o acesso selecionado sem exigir a escolha de uma turma.'
                   : 'Use seus dados reais. Suas publicações e atividades ficarão vinculadas ao seu perfil acadêmico.'}
             </p>
           </header>
@@ -102,7 +102,7 @@ export default function Cadastro() {
               </span>
               <h2 className="mt-5 text-xl font-bold text-[#073f2b]">Agora é com a professora</h2>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
-                Assim que a entrada for aprovada, use este e-mail e senha na tela de login.
+                A solicitação aparecerá em Pessoas e convites. Depois da aprovação, use este e-mail e senha para entrar.
               </p>
               <Link to="/entrar" className="primary-button mt-6 w-full">
                 Voltar para o login
@@ -114,15 +114,8 @@ export default function Cadastro() {
               {invitedClass && (
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">
-                    Convite válido · {inviteDetails?.role === 'monitor' ? 'Monitor' : 'Aluno'}
+                    Convite válido · Acesso geral · {inviteDetails?.role === 'monitor' ? 'Monitor' : 'Aluno'}
                   </span>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(inviteDetails?.classes || [invitedClass]).map((item) => (
-                      <span key={item.id} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-[#073f2b]">
-                        {item.name}
-                      </span>
-                    ))}
-                  </div>
                   <p className="mt-3 text-xs leading-5 text-slate-500">
                     Partes liberadas: {(inviteDetails?.modules || ['academic'])
                       .map((key) => ACCESS_MODULES.find((item) => item.key === key)?.label)
@@ -140,16 +133,18 @@ export default function Cadastro() {
                 <span className="field-label">E-mail</span>
                 <input required type="email" autoComplete="email" className="field-control" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
               </label>
-              <label>
-                <span className="field-label">Turma ou curso</span>
-                <input
-                  required
-                  className="field-control"
-                  value={form.className}
-                  onChange={(event) => setForm({ ...form, className: event.target.value })}
-                  placeholder="Ex.: Zootecnia A"
-                />
-              </label>
+              {!invitedClass && (
+                <label>
+                  <span className="field-label">Turma ou curso</span>
+                  <input
+                    required
+                    className="field-control"
+                    value={form.className}
+                    onChange={(event) => setForm({ ...form, className: event.target.value })}
+                    placeholder="Ex.: Zootecnia A"
+                  />
+                </label>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <label>
                   <span className="field-label">Senha</span>
@@ -165,7 +160,7 @@ export default function Cadastro() {
                 {[
                   'A professora acompanha sua participação',
                   'Seus indicadores são privados',
-                  invitedClass ? 'Se o e-mail já existir, a mesma conta receberá os novos acessos' : 'Sua sessão fica salva neste aparelho',
+                  invitedClass ? 'Se o e-mail já existir, a mesma conta receberá o acesso geral' : 'Sua sessão fica salva neste aparelho',
                 ].map((item) => (
                   <p key={item} className="flex items-center gap-2 py-1 text-xs text-[#335b47]">
                     <CheckCircle2 size={15} className="text-[#1b6a41]" />

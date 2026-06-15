@@ -216,12 +216,78 @@ await sql`
       )
   ) AS monitor
   WHERE c.status = 'active'
-  ON CONFLICT (class_id, user_id) DO UPDATE SET
-    role = 'monitor',
-    module_access = EXCLUDED.module_access,
-    status = 'active',
-    approved_at = COALESCE(class_memberships.approved_at, NOW()),
-    updated_at = NOW()
+  ON CONFLICT (class_id, user_id) DO NOTHING
+`
+
+await sql`
+  INSERT INTO class_memberships (
+    class_id,
+    user_id,
+    role,
+    module_access,
+    status,
+    progress,
+    approved_at
+  )
+  SELECT
+    c.id,
+    u.id,
+    CASE
+      WHEN
+        LOWER(TRIM(u.responsibility)) = 'monitor'
+        OR EXISTS (
+          SELECT 1
+          FROM class_memberships monitor_membership
+          WHERE
+            monitor_membership.user_id = u.id
+            AND monitor_membership.role = 'monitor'
+            AND monitor_membership.status = 'active'
+        )
+      THEN 'monitor'
+      ELSE 'student'
+    END,
+    CASE
+      WHEN
+        LOWER(TRIM(u.responsibility)) = 'monitor'
+        OR EXISTS (
+          SELECT 1
+          FROM class_memberships monitor_membership
+          WHERE
+            monitor_membership.user_id = u.id
+            AND monitor_membership.role = 'monitor'
+            AND monitor_membership.status = 'active'
+        )
+      THEN '[
+        "academic",
+        "matrizes",
+        "gestacao",
+        "partos",
+        "leitoes",
+        "varroes",
+        "coberturas",
+        "sanitario",
+        "relatorios"
+      ]'::jsonb
+      ELSE COALESCE((
+        SELECT existing_membership.module_access
+        FROM class_memberships existing_membership
+        WHERE
+          existing_membership.user_id = u.id
+          AND existing_membership.status = 'active'
+        ORDER BY existing_membership.updated_at DESC
+        LIMIT 1
+      ), '["academic"]'::jsonb)
+    END,
+    'active',
+    0,
+    NOW()
+  FROM classes c
+  CROSS JOIN users u
+  WHERE
+    c.status = 'active'
+    AND u.role = 'student'
+    AND u.status = 'active'
+  ON CONFLICT (class_id, user_id) DO NOTHING
 `
 
 for (const [index, classId] of classIds.entries()) {
@@ -273,6 +339,12 @@ for (const [index, classId] of classIds.entries()) {
     ON CONFLICT (id) DO NOTHING
   `
 }
+
+await sql`
+  UPDATE class_invitations
+  SET active = FALSE
+  WHERE jsonb_array_length(class_ids) = 0
+`
 
 const postClassLinks = [
   ['F001', 'CLS-PM'],
